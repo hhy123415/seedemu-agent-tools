@@ -27,11 +27,14 @@ def test_health() -> None:
     assert response.json()["status"] == "ok"
 
 
-def test_tool_registry_starts_empty() -> None:
+def test_tool_registry_lists_network_tools() -> None:
     response = client.get("/api/v1/tools")
 
     assert response.status_code == 200
-    assert response.json() == {"tools": [], "count": 0}
+    body = response.json()
+    assert body["count"] == 1
+    assert body["tools"][0]["name"] == "network.inspect_ip_address"
+    assert body["tools"][0]["domain"] == "network"
 
 
 def test_runtime_status() -> None:

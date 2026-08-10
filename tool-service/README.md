@@ -81,3 +81,22 @@ remove the service container with:
 ```bash
 docker compose down
 ```
+
+## Tool Domains
+
+Tools are grouped into packages under `seedemu_tool_service/tools/`. Each domain exposes one
+registration function that binds its functions or methods to the shared `ToolRegistry`.
+
+The network-domain skeleton is organized as follows:
+
+```text
+tools/network/
+|-- models.py        # Tool argument and result models
+|-- tools.py         # Tool function or bound-method implementations
+`-- registration.py  # Tool metadata and registry bindings
+```
+
+`network.inspect_ip_address` is a working reference tool. It demonstrates a bound method,
+Pydantic input schema generation, domain registration, discovery, and registry invocation without
+requiring a running emulator. New network tools should follow the same pattern and be added to
+`register_network_tools()`.

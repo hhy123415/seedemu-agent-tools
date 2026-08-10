@@ -1,6 +1,8 @@
 """Models used for tool discovery."""
 
-from pydantic import BaseModel, ConfigDict
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ToolDefinition(BaseModel):
@@ -9,7 +11,9 @@ class ToolDefinition(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
+    domain: str
     description: str
+    input_schema: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolListResponse(BaseModel):
