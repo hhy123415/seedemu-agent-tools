@@ -13,7 +13,7 @@ flowchart TB
     Agent[AI Agent]
 
     subgraph Host["SEEDemu Agent Tool Service "]
-        direction LR
+        direction TB
 
         API[API Server]
         IAM[Identity and Access<br/>Management]
