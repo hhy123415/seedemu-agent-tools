@@ -16,7 +16,7 @@ flowchart LR
         direction TB
 
         API[API Server]
-        IAM[Identity and Access<br/>Management]
+        IAM[Identity and Access<br>Management]
         Registry[Tool Registry]
         Tools[Tools]
         Backend[Runtime Backend]
