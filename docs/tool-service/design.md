@@ -9,7 +9,7 @@ This document describes the high-level architecture. Internal tool categories, i
 ## Architecture
 
 ```mermaid
-flowchart TB
+flowchart LR
     Agent[AI Agent]
 
     subgraph Host["SEEDemu Agent Tool Service "]
