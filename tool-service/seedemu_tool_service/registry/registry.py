@@ -7,6 +7,7 @@ from functools import partial
 from typing import Any
 
 import anyio
+from pydantic import BaseModel
 
 from seedemu_tool_service.models.tool import ToolDefinition
 
@@ -19,6 +20,7 @@ class RegisteredTool:
 
     definition: ToolDefinition
     handler: ToolHandler
+    arguments_model: type[BaseModel] | None = None
 
 
 class ToolRegistry:
@@ -27,14 +29,19 @@ class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, RegisteredTool] = {}
 
-    def register(self, definition: ToolDefinition, handler: ToolHandler) -> None:
+    def register(
+        self,
+        definition: ToolDefinition,
+        handler: ToolHandler,
+        arguments_model: type[BaseModel] | None = None,
+    ) -> None:
         """Register tool metadata and its function or bound method."""
 
         if definition.name in self._tools:
             raise ValueError(f"Tool already registered: {definition.name}")
         if not callable(handler):
             raise TypeError("Tool handler must be callable")
-        self._tools[definition.name] = RegisteredTool(definition, handler)
+        self._tools[definition.name] = RegisteredTool(definition, handler, arguments_model)
 
     def list_tools(self) -> list[ToolDefinition]:
         """Return registered tools sorted by name."""
@@ -49,8 +56,14 @@ class ToolRegistry:
         except KeyError as error:
             raise KeyError(f"Tool not found: {name}") from error
 
-        if inspect.iscoroutinefunction(registered_tool.handler):
-            return await registered_tool.handler(**arguments)
+        validated_arguments = dict(arguments)
+        if registered_tool.arguments_model is not None:
+            validated_arguments = registered_tool.arguments_model.model_validate(
+                arguments
+            ).model_dump()
 
-        call = partial(registered_tool.handler, **arguments)
+        if inspect.iscoroutinefunction(registered_tool.handler):
+            return await registered_tool.handler(**validated_arguments)
+
+        call = partial(registered_tool.handler, **validated_arguments)
         return await anyio.to_thread.run_sync(call)

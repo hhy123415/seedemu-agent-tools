@@ -96,7 +96,13 @@ tools/network/
 `-- registration.py  # Tool metadata and registry bindings
 ```
 
-`network.inspect_ip_address` is a working reference tool. It demonstrates a bound method,
-Pydantic input schema generation, domain registration, discovery, and registry invocation without
-requiring a running emulator. New network tools should follow the same pattern and be added to
+The initial network tools are:
+
+- `network.inspect_ip_address`: normalize an IPv4 or IPv6 address and inspect its properties.
+- `network.ping`: execute ICMP echo requests inside a selected emulated source container and
+  report whether the target host is reachable.
+
+Both demonstrate bound methods, Pydantic argument validation, domain registration, discovery, and
+registry invocation. The ping command is passed to Docker as an argument vector rather than through
+a shell. New network tools should follow the same pattern and be added to
 `register_network_tools()`.

@@ -32,9 +32,10 @@ def test_tool_registry_lists_network_tools() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["count"] == 1
+    assert body["count"] == 2
     assert body["tools"][0]["name"] == "network.inspect_ip_address"
     assert body["tools"][0]["domain"] == "network"
+    assert body["tools"][1]["name"] == "network.ping"
 
 
 def test_runtime_status() -> None:
