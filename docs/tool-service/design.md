@@ -29,9 +29,9 @@ flowchart LR
     end
     Emulator[SEED Emulator<br/>Emulated Digital World]
 
-    Agent <-->|Authenticated HTTP requests<br/>and responses| API
-    Backend <-->|Emulator lifecycle and runtime access| Emulator
-    Tools <-->|Authorized application protocols| Emulator
+    Agent <-->|HTTP requests<br/>and responses| API
+    Backend <-->|Emulator lifecycle<br/> and runtime access<br/>from Backend| Emulator
+    Tools <-->|Application protocols<br/>from Tools| Emulator
 ```
 
 The tool service and SEED Emulator run on the same host. This keeps runtime control and direct access to emulated services local while allowing agents to interact with the system through a single HTTP-facing boundary.
