@@ -109,3 +109,32 @@ the stable output contract.
 
 The ping command is passed to Docker as an argument vector rather than through a shell. New network
 tools should follow the same pattern and be added to `register_network_tools()`.
+
+### DNS Domain
+
+The DNS-domain skeleton follows the same structure:
+
+```text
+tools/dns/
+|-- models.py        # DNS argument and result models
+|-- tools.py         # DNS tool implementations
+`-- registration.py  # DNS registry bindings
+```
+
+The initial `dns.lookup` tool runs `dig` inside a selected emulated container. It uses the node's
+configured resolver by default or an explicitly supplied DNS server. The source container must have
+the `dig` executable installed.
+
+### BGP Domain
+
+The BGP-domain skeleton lives under `tools/bgp/` and includes explicit argument and result models,
+bound-method implementations, and registry bindings. Its reference tool is `bgp.summary`, which
+runs `vtysh -c "show bgp ipv4 unicast summary"` inside a selected emulated router. The router
+container must provide `vtysh` and a compatible routing daemon.
+
+### PKI Domain
+
+The PKI-domain skeleton lives under `tools/pki/` with the same domain-owned structure. Its reference
+tool is `pki.inspect_certificate_file`, which uses `openssl x509` to inspect a certificate file
+inside a selected emulated node. The source container must provide `openssl`, and the supplied path
+is interpreted inside that container.

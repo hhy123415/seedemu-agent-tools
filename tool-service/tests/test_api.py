@@ -32,10 +32,15 @@ def test_tool_registry_lists_network_tools() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["count"] == 2
-    assert body["tools"][0]["name"] == "network.inspect_ip_address"
-    assert body["tools"][0]["domain"] == "network"
-    assert body["tools"][1]["name"] == "network.ping"
+    assert body["count"] == 5
+    assert [tool["name"] for tool in body["tools"]] == [
+        "bgp.summary",
+        "dns.lookup",
+        "network.inspect_ip_address",
+        "network.ping",
+        "pki.inspect_certificate_file",
+    ]
+    assert body["tools"][0]["domain"] == "bgp"
 
 
 def test_runtime_status() -> None:
