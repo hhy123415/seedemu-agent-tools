@@ -6,7 +6,7 @@ This diagram shows how the FastAPI application, route modules, dependency provid
 tool domains, and runtime backend are assembled.
 
 ```mermaid
-flowchart LR
+flowchart TB
     CreateApp[create_app]
     FastAPIApp[FastAPI application]
     APIRouter[API router]
