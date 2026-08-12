@@ -2,10 +2,16 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class InspectIPAddressArguments(BaseModel):
+class ToolArguments(BaseModel):
+    """Base model for strict tool argument validation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class InspectIPAddressArguments(ToolArguments):
     """Arguments accepted by the IP-address inspection tool."""
 
     address: str = Field(description="IPv4 or IPv6 address to inspect")
@@ -22,7 +28,7 @@ class IPAddressInfo(BaseModel):
     is_global: bool
 
 
-class PingArguments(BaseModel):
+class PingArguments(ToolArguments):
     """Arguments accepted by the host-reachability tool."""
 
     source: str = Field(description="Name or ID of the emulated source container")

@@ -44,6 +44,8 @@ def test_network_domain_registers_its_tools() -> None:
     assert "address" in definitions[0].input_schema["properties"]
     assert "source" in definitions[1].input_schema["properties"]
     assert "target" in definitions[1].input_schema["properties"]
+    assert definitions[1].input_schema["properties"]["count"]["maximum"] == 10
+    assert definitions[1].input_schema["properties"]["count"]["default"] == 3
 
 
 def test_inspect_ip_address_bound_method() -> None:

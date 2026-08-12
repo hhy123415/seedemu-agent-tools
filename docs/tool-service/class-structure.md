@@ -39,9 +39,9 @@ registry, and asks each domain to register its tools.
 
 ## Registry Classes
 
-The registry keeps agent-visible metadata separate from executable Python callables. A registered
-tool combines both pieces and may also hold a Pydantic argument model for invocation-time
-validation.
+The registry keeps agent-visible metadata separate from executable Python callables. Registration
+associates each handler with an explicit Pydantic argument model, from which the registry generates
+the input JSON Schema.
 
 ```mermaid
 classDiagram
@@ -69,8 +69,8 @@ classDiagram
         <<callable>>
     }
 
-    class PydanticArguments {
-        <<BaseModel type>>
+    class ToolArguments {
+        <<Pydantic BaseModel>>
         +model_validate(arguments)
         +model_json_schema()
     }
@@ -83,17 +83,19 @@ classDiagram
     ToolRegistry "1" *-- "0..*" RegisteredTool : stores
     RegisteredTool --> ToolDefinition : exposes
     RegisteredTool --> ToolHandler : invokes
-    RegisteredTool --> PydanticArguments : validates with
+    RegisteredTool --> ToolArguments : validates with
     ToolListResponse o-- ToolDefinition : contains
 ```
 
-`ToolDefinition` is returned by tool discovery. `ToolHandler` and the argument-model class remain
-internal to the service and are used when `ToolRegistry.invoke()` executes a tool.
+`ToolDefinition` is returned by tool discovery. `ToolHandler` and the explicit argument-model class
+remain internal to the service and are used when `ToolRegistry.invoke()` executes a tool.
 
 ## Network Domain and Runtime Backend
 
 The network domain owns its argument and result models. `NetworkTools` depends only on the
-`RuntimeBackend` protocol, so another backend can replace Docker without changing the tools.
+`RuntimeBackend` protocol, so another backend can replace Docker without changing the tools. To
+keep the diagram readable, only `network.ping` is shown as a representative tool; other network
+tools follow the same structure.
 
 ```mermaid
 classDiagram
@@ -104,7 +106,6 @@ classDiagram
 
     class NetworkTools {
         -backend: RuntimeBackend
-        +inspect_ip_address(address) IPAddressInfo
         +ping(source, target, count, timeout_seconds) ReachabilityResult
     }
 
@@ -118,19 +119,6 @@ classDiagram
         -client
         +status() RuntimeStatus
         +execute(container, command) RuntimeCommandResult
-    }
-
-    class InspectIPAddressArguments {
-        +address: str
-    }
-
-    class IPAddressInfo {
-        +address: str
-        +version: int
-        +is_private: bool
-        +is_loopback: bool
-        +is_multicast: bool
-        +is_global: bool
     }
 
     class PingArguments {
@@ -165,13 +153,13 @@ classDiagram
     class RuntimeTargetNotFoundError
     class ToolRegistry
 
+    note for NetworkTools "Only network.ping is shown as an example"
+
     RuntimeBackend <|.. DockerRuntimeBackend : implements
     NetworkTools --> RuntimeBackend : uses
     NetworkDomainRegistration ..> NetworkTools : constructs
     NetworkDomainRegistration ..> ToolRegistry : registers with
-    NetworkDomainRegistration ..> InspectIPAddressArguments : publishes schema
-    NetworkDomainRegistration ..> PingArguments : publishes schema
-    NetworkTools ..> IPAddressInfo : returns
+    NetworkDomainRegistration ..> PingArguments : registers
     NetworkTools ..> ReachabilityResult : returns
     DockerRuntimeBackend ..> RuntimeStatus : returns
     DockerRuntimeBackend ..> RuntimeCommandResult : returns
@@ -181,8 +169,8 @@ classDiagram
 
 ## Ping Invocation Sequence
 
-The following sequence connects the class relationships to a concrete invocation of
-`network.ping`.
+The following sequence shows how the registered `PingArguments` model is used during an invocation
+of `network.ping`.
 
 ```mermaid
 sequenceDiagram

@@ -91,7 +91,7 @@ The network-domain skeleton is organized as follows:
 
 ```text
 tools/network/
-|-- models.py        # Tool argument and result models
+|-- models.py        # Explicit argument and result models
 |-- tools.py         # Tool function or bound-method implementations
 `-- registration.py  # Tool metadata and registry bindings
 ```
@@ -102,7 +102,10 @@ The initial network tools are:
 - `network.ping`: execute ICMP echo requests inside a selected emulated source container and
   report whether the target host is reachable.
 
-Both demonstrate bound methods, Pydantic argument validation, domain registration, discovery, and
-registry invocation. The ping command is passed to Docker as an argument vector rather than through
-a shell. New network tools should follow the same pattern and be added to
-`register_network_tools()`.
+Both demonstrate bound methods, explicit Pydantic argument validation, domain registration,
+discovery, and registry invocation. Each registration associates a handler with an argument model.
+The registry derives the tool's input JSON Schema from that model, while the result model defines
+the stable output contract.
+
+The ping command is passed to Docker as an argument vector rather than through a shell. New network
+tools should follow the same pattern and be added to `register_network_tools()`.
