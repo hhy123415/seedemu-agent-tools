@@ -75,16 +75,16 @@ Agent -> tool-service -> selected source
                            `-> source-owned authoritative DNS Primary/Secondary
 
 Namingo Registrar backend node
-  |-> MariaDB + backend adapter -> WHOIS/RDAP
-  |-> optional automation
-  `-> independent Namingo EPP client -> Namingo Registry
+  |-> loom adapter -> read-only Loom MariaDB -> WHOIS/RDAP
+  `-> optional automation
 ```
 
 - Loom owns the customer-facing HTML, sessions, orders, invoices, and domain
   lifecycle.
-- The independent Namingo Registrar backend supplies the configurable billing
-  adapter, WHOIS/RDAP, optional automation, and a verified EPP client. Loom's
-  purchase path does not pass through this WHOIS/RDAP backend.
+- The independent Namingo Registrar backend uses its upstream `loom` adapter to
+  read Loom MariaDB through a source-restricted, read-only account. It supplies
+  WHOIS/RDAP. B02a leaves Namingo automation disabled because this connection is
+  read-only; Loom itself performs order-driven lifecycle provisioning.
 - Namingo Registry is authoritative for domain uniqueness, sponsorship,
   nameservers, and glue. Registrar-to-Registry operations use EPP over TLS.
 - Registry Zone Writer publishes the TLD zone to a query-hidden Primary, which
@@ -95,6 +95,13 @@ Namingo Registrar backend node
 The Registrar URL is service-owned metadata. Tools must not infer an API from
 container names, IP addresses, or Namingo roles, and `credential_ref` is an opaque
 reference rather than a secret or an endpoint description.
+
+Architecture documentation:
+
+- [End-to-end architecture and Agent workflow](docs/domain_register_design.md)
+- [端到端架构与 Agent 调用流程](docs/domain_register_design_zh.md)
+- [Namingo Registrar and Loom](docs/NamingoRegistrar.md)
+- [Namingo Registry and TLD DNS](docs/NamingoRegistry.md)
 
 ## `example.com` workflow
 
@@ -132,8 +139,10 @@ Docker-backend tests expect an already generated and running B02a deployment:
   seedemu_tool_service/tools/dns/tests/dockerbackend -v
 ```
 
-The purchase test requires a fresh Registry because it intentionally owns
-`example.com`:
+The purchase test requires a fresh Registry because it intentionally registers
+`example.com`. It also verifies that Namingo WHOIS and RDAP read the resulting
+domain from Loom MariaDB and that both B02a recursive resolvers return the
+configured address:
 
 ```bash
 .venv/bin/python -m pytest \

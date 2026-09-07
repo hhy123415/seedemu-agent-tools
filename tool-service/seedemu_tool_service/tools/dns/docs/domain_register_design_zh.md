@@ -1,123 +1,138 @@
 # source 自有 DNS 与域名注册设计
 
-## 范围
+## 设计概览
 
-本文描述 B02a 当前已实现的流程：Agent 通过所选仿真 source 配置自有权威 DNS，并通过正常 Registrar 前端购买 `example.com`。设计不为 Registrar 假设或固化私有 REST API。
-
-## 组件与信任边界
+B02a 展示 Agent 如何在 SeedEmu 网络内配置自有权威 DNS，并通过 Loom 和 Namingo 注册 `example.com`。系统由四个部分组成：Agent 工具层、Registrar 侧、Registry 侧，以及父区和子区 DNS。
 
 ```mermaid
-%%{init: {"theme": "base", "flowchart": {"rankSpacing": 75, "nodeSpacing": 30}, "themeVariables": {"background": "#000000", "primaryColor": "#111827", "primaryTextColor": "#ffffff", "primaryBorderColor": "#9ca3af", "lineColor": "#d1d5db", "clusterBkg": "#0b0f14", "clusterBorder": "#6b7280", "edgeLabelBackground": "#000000"}}}%%
+%%{init: {"theme": "base", "flowchart": {"rankSpacing": 70, "nodeSpacing": 30}, "themeVariables": {"background": "#000000", "primaryColor": "#111827", "primaryTextColor": "#ffffff", "primaryBorderColor": "#9ca3af", "lineColor": "#d1d5db", "clusterBkg": "#0b0f14", "clusterBorder": "#6b7280", "edgeLabelBackground": "#000000"}}}%%
 flowchart TD
     agent["Agent"]
 
-    subgraph tool_service["tool-service"]
+    subgraph tool_layer["Agent 工具层"]
         tools["DNS / domain tools"]
-        runtime["Docker runtime backend"]
+        runtime["Docker RuntimeBackend"]
+        source["所选 source<br/>网络请求与本地 session"]
     end
 
-    subgraph emulator["SeedEmu Docker 网络"]
-        source["获授权 source<br/>HTTP、DNS、source-local session"]
-        other["其他 source<br/>无控制凭据"]
-
-        subgraph customer_registrar["客户 Registrar 路径"]
-            loom["Loom HTTPS 前端<br/>客户、订单、账单"]
-            source_auth["Loom source-token 认证"]
-            loom_epp["Loom Namingo EPP client"]
-        end
-
-        subgraph namingo_backend["Namingo Registrar 后端节点"]
-            backend_db["MariaDB + backend adapter<br/>custom / Loom / FOSSBilling / WHMCS"]
-            whois_rdap["WHOIS / RDAP"]
-            automation["可选 automation"]
-            backend_epp["独立 Namingo EPP client<br/>health 与显式 EPP 操作"]
-        end
-
-        registry["Namingo Registry<br/>EPP 对象与唯一性"]
-        zone_writer["Registry Zone Writer"]
-
-        subgraph parent_dns[".com 权威 DNS"]
-            hidden["A-com 隐藏 Primary"]
-            public_b["B-com 公共 Secondary"]
-            public_c["C-com 公共 Secondary"]
-        end
-
-        subgraph owner_dns["source 自有 example.com DNS"]
-            owner_primary["ns1 Primary"]
-            owner_secondary["ns2 Secondary"]
-        end
+    subgraph registrar_side["Registrar 侧"]
+        loom["Loom HTTPS 前端<br/>客户、订单、账单、域名生命周期"]
+        loom_db[("Loom MariaDB")]
+        loom_epp["Loom Namingo EPP client"]
+        namingo["Namingo Registrar<br/>loom backend"]
+        rdds["WHOIS / RDAP"]
     end
 
-    agent -->|"调用工具"| tools --> runtime -->|"进入所选容器"| source
-    source -->|"HTTPS + source token"| source_auth --> loom
-    loom -->|"订单触发"| loom_epp -->|"EPP over mutual TLS"| registry
-    backend_db --> whois_rdap
-    backend_db --> automation
-    backend_epp -->|"独立 EPP/TLS 健康检查和操作"| registry
-    source -->|"dns.configure + 私有 SSH 凭据"| owner_primary
-    owner_primary -->|"AXFR/IXFR transfer TSIG"| owner_secondary
-    registry --> zone_writer -->|"受限 SSH 原子发布"| hidden
-    hidden -->|"NOTIFY + transfer TSIG"| public_b
-    hidden -->|"NOTIFY + transfer TSIG"| public_c
-    other -.->|"拒绝"| owner_primary
-    other -.->|"不能绕过 Registry"| hidden
+    subgraph registry_side["Registry 侧"]
+        registry["Namingo Registry<br/>EPP 与注册对象"]
+        registry_db[("Registry MariaDB")]
+        writer["Registry Zone Writer"]
+    end
 
+    subgraph parent_dns[".com 父区权威 DNS"]
+        hidden["隐藏 Primary"]
+        public_b["公共 Secondary B"]
+        public_c["公共 Secondary C"]
+    end
+
+    subgraph child_dns["source 自有 example.com DNS"]
+        child_primary["ns1 Primary"]
+        child_secondary["ns2 Secondary"]
+    end
+
+    agent -->|"调用工具"| tools --> runtime --> source
+    source -->|"HTTPS 表单与 session"| loom
+    loom --> loom_db
+    loom -->|"已支付订单"| loom_epp -->|"EPP over mutual TLS"| registry
+    namingo -->|"loom adapter 只读查询"| loom_db
+    namingo --> rdds
+    registry --> registry_db --> writer
+    writer -->|"发布 .com zone"| hidden
+    hidden -->|"NOTIFY + AXFR/IXFR"| public_b
+    hidden -->|"NOTIFY + AXFR/IXFR"| public_c
+    source -->|"dns.configure"| child_primary
+    child_primary -->|"AXFR/IXFR"| child_secondary
     classDef dark fill:#111827,stroke:#9ca3af,color:#ffffff
-    class agent,tools,runtime,source,loom,source_auth,loom_epp,backend_db,whois_rdap,automation,backend_epp,registry,zone_writer,hidden,public_b,public_c,owner_primary,owner_secondary dark
-    classDef denied fill:#2a0a0a,stroke:#ef4444,color:#ffffff
-    class other denied
-    style tool_service fill:#151008,stroke:#f59e0b,color:#ffffff
-    style emulator fill:#111827,stroke:#a78bfa,color:#ffffff
-    style customer_registrar fill:#0b1220,stroke:#60a5fa,color:#ffffff
-    style namingo_backend fill:#17110a,stroke:#f59e0b,color:#ffffff
-    style owner_dns fill:#071a12,stroke:#4ade80,color:#ffffff
+    class agent,tools,runtime,source,loom,loom_db,loom_epp,namingo,rdds,registry,registry_db,writer,hidden,public_b,public_c,child_primary,child_secondary dark
+    style tool_layer fill:#151008,stroke:#f59e0b,color:#ffffff
+    style registrar_side fill:#0b1220,stroke:#60a5fa,color:#ffffff
+    style registry_side fill:#17110a,stroke:#f59e0b,color:#ffffff
     style parent_dns fill:#1a0d14,stroke:#f472b6,color:#ffffff
+    style child_dns fill:#071a12,stroke:#4ade80,color:#ffffff
 ```
 
-- tool-service 校验参数，并通过 `RuntimeBackend` 在所选 source 内执行网络操作。
-- Loom 负责客户会话、订单、账单和面向客户的 HTML 流程。
-- Namingo Registry 最终决定域名唯一性、sponsoring Registrar、nameserver 和 glue；Loom 通过双向认证的 EPP over TLS 与其通信。
-- Registry Zone Writer 把 `.com` 发布到不对外查询的隐藏 Primary，再通过 NOTIFY 和 TSIG 保护的 AXFR/IXFR 同步到公共 Secondary。
-- source 自有 DNS 对外提供子区权威服务；运行时更新和主从传送凭据相互分离。
+Loom 是购买流程的业务入口。它保存客户、订单和账单，在付款成功后通过 EPP 向 Namingo Registry 创建 contact、host 和 domain 对象。Namingo Registrar 使用 `loom` backend 读取同一份 Loom 数据，为注册结果提供 WHOIS 和 RDAP 查询。Registry 的 Zone Writer 再把有效委派发布到 `.com` 权威 DNS。
 
-source、Agent 和 Registrar 都不能绕过 Registry 修改 TLD zone。Registry 数据库不与 Loom 或自有 DNS 共用。
+父区和子区分别管理不同的数据：`.com` 保存 `example.com` 的 NS 与 glue；source 自有 DNS 保存 `www.example.com` 等域内记录。两者通过正常 DNS 委派连接。
 
-## Namingo Registrar 后端
+## Agent 工具调用流程
 
-Namingo Registrar 后端和 Loom 是两个独立部署角色，不能把二者合并成一个方框：
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant T as tool-service
+    participant S as selected source
+    participant L as Loom
+    participant R as Namingo Registry
+    participant P as .com DNS
+    participant D as example.com DNS
 
-- Loom 是当前购买流程的客户门户，自带 Namingo EPP client，直接向 Registry 提交订单产生的 EPP 操作。
-- `NamingoRegistrarService` 部署独立 MariaDB，并支持 `custom`、`loom`、`foss` 和 `whmcs` backend adapter；adapter 决定 WHOIS/RDAP 从哪种客户或计费数据模型读取信息。
-- Namingo 后端可启动 WHOIS、Nginx 代理的 RDAP 和可选 automation worker；`custom` backend 没有兼容 schema/adapter 时只能作为模板，不能宣称返回真实注册数据。
-- `enableEppClient` 安装固定版本的官方 Namingo EPP client，写入受保护的 CA、客户端证书、私钥和配置，并周期性生成 `/run/seedemu-epp-health.json`。B02a 使用它验证 Registrar 节点到 Registry 的 EPP/TLS 能力和执行显式 EPP 测试；Loom 购买请求不经过该 WHOIS/RDAP backend。
-- Loom 节点和 Namingo Registrar 后端节点都作为获授权 Registrar 客户端出现在 Registry 边界内，但各自拥有独立进程和地址；它们都不能访问 Registry 数据库。
+    A->>T: domain.registrar_find
+    T-->>A: Loom origin
+    A->>T: dns.configure(zone, A record)
+    T->>S: 执行 DNS 配置
+    S->>D: 更新 Primary 并同步 Secondary
+    D-->>A: 权威响应与 SOA 收敛
+    A->>T: domain.registrar_request(GET /)
+    T->>S: 建立 source-local session
+    S->>L: HTTPS + source token
+    L-->>A: HTML、session_id、CSRF 表单
+    A->>T: domain.registrar_request(注册表单)
+    T->>L: 域名、联系人、NS 与 glue
+    L-->>A: invoice 跳转
+    A->>T: domain.registrar_request(支付表单)
+    T->>L: 余额付款
+    L->>R: EPP contact/host/domain create
+    R-->>L: 注册成功
+    R->>P: Zone Writer 发布 NS/glue
+    A->>T: dns.check_delegation
+    T->>P: 查询父区 referral/glue
+    T->>D: 查询子区 NS/SOA
+    A->>T: dns.lookup（两台递归解析器）
+    T-->>A: www.example.com A
+```
 
-## 服务发现与 source 认证
+实际调用步骤如下：
 
-Loom 发布 `agent.exposed.registrar_url`，Docker 编译器将其转换为 SeedEmu metadata label。`domain.registrar_find` 只信任这一显式暴露契约，返回规范化 origin 和可选的不透明 `credential_ref`。
+1. Agent 调用 `domain.registrar_find`，从显式发布的 metadata 中发现 Loom origin。
+2. Agent 调用 `dns.configure`，先创建 `example.com` 子区并写入 `www` 等记录；工具同时验证 Primary、Secondary 和 SOA。
+3. Agent 调用 `domain.registrar_request` 请求 Loom 首页。工具从所选 source 建立认证 session，并返回页面、`session_id` 和 HTTP 证据。
+4. Agent继续用同一 `session_id` 读取注册表单，保留 CSRF 字段，再提交域名、联系人、`ns1/ns2` 和 glue 地址。
+5. Loom 创建订单和账单；Agent读取支付页面并提交余额付款。
+6. Loom 的 EPP client 向 Namingo Registry 创建注册对象。Registry 成功提交后，Zone Writer 发布 `.com` 委派。
+7. Agent 调用 `dns.check_delegation`，确认父区 NS/glue 与两台子区权威服务器一致。
+8. Agent 调用 `dns.lookup`，分别通过 B02a 的两台递归解析器验证最终 A 记录。
 
-`domain.registrar_request` 只允许 GET/POST 和同源路径，不自动跟随重定向，并限制请求与响应大小。它返回 HTTP 状态、content type、location、正文和 session 证据。Agent 从 `GET /` 开始，根据 Loom 的表单和同源脚本理解业务流程。
+Registrar session 和私有凭据保留在所选 source 内；Agent 通过工具看到的是可发现的 Loom 页面和结构化 DNS 结果。父区变更经 Registrar/Registry 完成，而购买后的普通子区记录继续使用 `dns.configure` 更新。
 
-当 `authentication=auto` 或 `required` 时，所选 source 使用已配置的 source ID、token 和 CA，通过 HTTPS 建立 Loom 会话。cookie 保存在 source 内的 `/var/lib/seedemu/registrar/<origin-hash>/`。source 名称本身不能作为认证；工具入口还必须授权调用者选择该 source。
+## Namingo Registrar 与 Loom
 
-## 自有权威 DNS 配置
+B02a 将 `NamingoRegistrarService` 配置为 `loom` backend。Namingo Registrar 通过专用只读账号连接 Loom MariaDB，因此 WHOIS/RDAP 与 Loom 订单展示的是同一份 Registrar 数据。B02a 不启用 Namingo automation，订单驱动的域名生命周期由 Loom 负责。
 
-`dns.configure` 只允许配置好的 `dns_service_id`、zone allowlist 和获授权 source。B02a 只为 `as150h-host_1-10.150.0.72` 配置管理 `b02a.source-owned-dns` 与 `example.com` 的凭据。
+## DNS 发布与解析
 
-工具按需创建子区 Primary/Secondary，执行 RRset 替换或删除，并验证权威响应和 SOA 一致性。该步骤发生在父区委派之前，因此使用直接权威查询验证。
+Namingo Registry 将注册数据交给 Zone Writer，Zone Writer 发布到 `.com` 隐藏 Primary，再通过 NOTIFY 和 TSIG 保护的 AXFR/IXFR 同步两台公共 Secondary。递归解析器从公共 Secondary 获得 `example.com` 的 referral 和 glue，随后查询 source 自有权威 DNS。
 
-## 购买与委派流程
+动态委派可能受到递归缓存影响，因此完整测试分别等待两台递归解析器收敛，而不是只验证其中一台，也不会通过清空缓存伪造成功。
 
-1. 使用 `domain.registrar_find` 发现 Loom。
-2. 使用 `dns.configure` 配置 `example.com` 及其记录。
-3. 使用 `domain.registrar_request` 读取 Loom 页面，并保留 `session_id` 与 CSRF 字段。
-4. 提交包含 `ns1.example.com`、`ns2.example.com` 及 IPv4 glue 的订单，然后支付账单。
-5. Loom 通过 EPP 创建 Registry 对象；Registry 拒绝重复域名，并最终决定可用性。
-6. Zone Writer 将 NS/glue 发布到 `.com`，公共 Secondary 完成收敛。
-7. 验证父区 referral/glue、两台子区权威服务器和最终递归解析。
+## 实现与验证
 
-购买完成后，`example.com` 内的普通记录直接通过 `dns.configure` 更新。nameserver/glue 变更、续费、转移和注册状态仍属于 Registrar/Registry 操作。
+主要实现位于：
 
-## 已实现验证
+- `seed-emulator/examples/internet/B02a_domain_registration/domain_registration.py`
+- `seed-emulator/seedemu/services/LoomRegistrarService.py`
+- `seed-emulator/seedemu/services/NamingoRegistrarService.py`
+- `seed-emulator/seedemu/services/NamingoRegistryService.py`
+- `seedemu-agent-tools/tool-service/seedemu_tool_service/tools/dns/`
 
-Fake backend 测试覆盖解析、参数校验、发现限制、source-local session 和工具注册。Docker 测试覆盖 source 认证、Loom HTML/session、自有 DNS 主从收敛、购买与付款、EPP 注册、父区委派/glue 和最终递归解析。购买测试会注册 `example.com`，因此要求全新的 Registry。
+Docker 购买测试覆盖 Loom session、下单付款、EPP 注册、WHOIS/RDAP、父区委派、子区权威响应，以及两台递归解析器的最终解析。

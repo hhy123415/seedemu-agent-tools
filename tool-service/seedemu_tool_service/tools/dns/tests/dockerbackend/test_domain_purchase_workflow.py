@@ -5,9 +5,9 @@ Run this test against a freshly started B02a deployment.  It intentionally owns
 B02a topology test that already registered that domain.
 """
 
-from html.parser import HTMLParser
 import json
 import time
+from html.parser import HTMLParser
 from urllib.parse import urlencode, urlsplit
 
 import anyio
@@ -24,7 +24,7 @@ ZONE = "example.com"
 NAME = "www.example.com"
 ANSWER = "11.160.0.80"
 COM_SERVER = "10.152.0.71"
-RECURSIVE_RESOLVER = "10.152.0.53"
+RECURSIVE_RESOLVERS = ("10.152.0.53", "10.153.0.53")
 OWNER_DNS = ["11.160.0.53", "11.160.0.54"]
 
 
@@ -93,7 +93,8 @@ def test_agent_configures_dns_buys_example_com_and_resolves_it() -> None:
     """Exercise discovery, Loom purchase, EPP delegation, and DNS resolution."""
 
     registry = ToolRegistry()
-    register_dns_tools(registry, DockerRuntimeBackend())
+    backend = DockerRuntimeBackend()
+    register_dns_tools(registry, backend)
 
     directory = _invoke(registry, "domain.registrar_find", {})
     loom = [item for item in directory.registrars if item.registrar_url == REGISTRAR_URL]
@@ -185,6 +186,34 @@ def test_agent_configures_dns_buys_example_com_and_resolves_it() -> None:
                 "authentication": "required",
             })
 
+    whois = None
+    rdap = None
+    rdap_domain = None
+    for _ in range(20):
+        whois = backend.execute(
+            SOURCE, ["whois", "-h", "whois.registrar.com", ZONE]
+        )
+        rdap = backend.execute(
+            SOURCE,
+            ["curl", "-fsS", "--max-time", "5", f"http://rdap.registrar.com/domain/{ZONE}"],
+        )
+        try:
+            rdap_domain = json.loads(rdap.stdout).get("ldhName")
+        except (json.JSONDecodeError, AttributeError):
+            rdap_domain = None
+        if (
+            whois.exit_code == 0
+            and "Domain Name: EXAMPLE.COM" in whois.stdout
+            and rdap.exit_code == 0
+            and rdap_domain == ZONE
+        ):
+            break
+        time.sleep(2)
+    assert whois is not None and whois.exit_code == 0, whois.stderr if whois else ""
+    assert "Domain Name: EXAMPLE.COM" in whois.stdout, whois.stdout
+    assert rdap is not None and rdap.exit_code == 0, rdap.stderr if rdap else ""
+    assert rdap_domain == ZONE, rdap.stdout
+
     delegation = None
     for _ in range(30):
         delegation = _invoke(registry, "dns.check_delegation", {
@@ -201,18 +230,34 @@ def test_agent_configures_dns_buys_example_com_and_resolves_it() -> None:
     assert delegation.parent_ns_names == ["ns1.example.com.", "ns2.example.com."]
     assert delegation.missing_glue_names == []
 
-    lookup = None
-    for _ in range(20):
-        lookup = _invoke(registry, "dns.lookup", {
-            "source": SOURCE,
-            "name": NAME,
-            "record_type": "A",
-            "server": RECURSIVE_RESOLVER,
-            "include_details": True,
-        })
-        if lookup.response_status == "NOERROR" and ANSWER in lookup.answers:
+    pending_resolvers = set(RECURSIVE_RESOLVERS)
+    resolver_results = {}
+    for _ in range(60):
+        for resolver in tuple(pending_resolvers):
+            lookup = _invoke(registry, "dns.lookup", {
+                "source": SOURCE,
+                "name": NAME,
+                "record_type": "A",
+                "server": resolver,
+                "include_details": True,
+            })
+            resolver_results[resolver] = lookup
+            if (
+                lookup.command_successful
+                and lookup.response_status == "NOERROR"
+                and lookup.answers == [ANSWER]
+            ):
+                pending_resolvers.remove(resolver)
+        if not pending_resolvers:
             break
         time.sleep(3)
-    assert lookup is not None and lookup.command_successful
-    assert lookup.response_status == "NOERROR"
-    assert lookup.answers == [ANSWER]
+
+    assert not pending_resolvers, {
+        resolver: resolver_results.get(resolver)
+        for resolver in sorted(pending_resolvers)
+    }
+    for resolver in RECURSIVE_RESOLVERS:
+        lookup = resolver_results[resolver]
+        assert lookup.command_successful, (resolver, lookup)
+        assert lookup.response_status == "NOERROR", (resolver, lookup)
+        assert lookup.answers == [ANSWER], (resolver, lookup)
