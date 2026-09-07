@@ -1,39 +1,37 @@
-# Namingo Registry 与 TLD DNS 架构
+# Namingo Registry and TLD DNS architecture
 
-## 整体结构
+## Overall structure
 
-Namingo Registry 是 `.com` 注册数据的中心。它通过 EPP 接收 Registrar 的注册操作，将 domain、contact 和 host 对象保存在 Registry MariaDB，再由 Zone Writer 生成父区委派数据。
+Namingo Registry is the center of `.com` registration data. It accepts Registrar operations over EPP, stores domain, contact, and host objects in Registry MariaDB, and uses Zone Writer to produce parent-zone delegations.
 
 ```mermaid
 flowchart LR
-    loom["Loom<br/>订单 EPP client"]
+    loom["Loom<br/>order EPP client"]
 
-    subgraph registry_node["Namingo Registry 节点"]
+    subgraph registry_node["Namingo Registry node"]
         epp["EPP Server :700<br/>TLS + Registrar session"]
         logic["Registry domain logic<br/>contact / host / domain"]
         db[("Registry MariaDB")]
         writer["Zone Writer"]
     end
 
-    subgraph com_dns[".com 权威 DNS"]
-        hidden["隐藏 Primary<br/>master zone"]
-        secondary_b["公共 Secondary B"]
-        secondary_c["公共 Secondary C"]
+    subgraph com_dns[".com authoritative DNS"]
+        hidden["Hidden Primary<br/>master zone"]
+        secondary_b["Public Secondary B"]
+        secondary_c["Public Secondary C"]
     end
 
     loom -->|"EPP over mutual TLS"| epp
     epp --> logic --> db
     db --> writer
-    writer -->|"校验并原子发布"| hidden
+    writer -->|"Validate and publish atomically"| hidden
     hidden -->|"NOTIFY + TSIG AXFR/IXFR"| secondary_b
     hidden -->|"NOTIFY + TSIG AXFR/IXFR"| secondary_c
 ```
 
-Registry 数据库和 `.com` zone 是同一注册事实的两个表示：数据库用于事务和对象管理，zone 用于公开 DNS 委派。Zone Writer 负责把已经生效的 Registry 对象转换成 NS 和 glue。
+The Registry database and `.com` zone are two representations of the same registration state. The database supports transactions and object management; the zone publishes DNS delegations. Zone Writer converts active Registry objects into NS and glue records.
 
-## EPP 注册事务
-
-Loom 完成订单支付后，通过 Namingo EPP client 执行注册。典型对象顺序如下：
+## EPP registration transaction
 
 ```mermaid
 sequenceDiagram
@@ -46,53 +44,49 @@ sequenceDiagram
     L->>E: login
     E-->>L: authenticated session
     L->>E: domain:check example.com
-    E->>D: 查询唯一性
+    E->>D: Check uniqueness
     E-->>L: available
     L->>E: contact:create
-    E->>D: 保存 contact
+    E->>D: Store contact
     L->>E: host:create ns1/ns2 + glue
-    E->>D: 保存 host
+    E->>D: Store hosts
     L->>E: domain:create example.com
-    E->>D: 提交 domain、sponsor、NS
+    E->>D: Commit domain, sponsor, and NS
     E-->>L: success + transaction ID
-    D->>Z: 读取有效注册对象
-    Z->>P: 发布 example.com NS/glue
+    D->>Z: Read active registration objects
+    Z->>P: Publish example.com NS/glue
     L->>E: logout
 ```
 
-`domain:check` 提供注册前可用性信息，`domain:create` 时 Registry 仍会在事务中执行最终唯一性判断。注册成功后，Loom 保存 Registrar 侧服务状态；Registry 则保存 TLD 的最终登记状态。
+`domain:check` reports availability before registration, but `domain:create` still performs the final uniqueness check within the Registry transaction. In-zone nameservers such as `ns1.example.com` require glue, so the flow creates host objects with addresses before the domain references them.
 
-域内 nameserver（例如 `ns1.example.com`）需要 glue，因此 EPP 流程先创建带地址的 host 对象，再让 domain 对象引用这些 host。
-
-## Zone Writer 与 `.com` DNS
+## Zone Writer and `.com` DNS
 
 ```mermaid
 flowchart TD
     db[("Registry MariaDB")]
-    render["Zone Writer<br/>生成候选 .com zone"]
-    validate["named-checkzone<br/>语法与一致性检查"]
-    staging["隐藏 Primary staging"]
-    active["隐藏 Primary active zone"]
-    b["公共 Secondary B"]
-    c["公共 Secondary C"]
-    db --> render --> validate --> staging -->|"原子替换与 reload"| active
+    render["Zone Writer<br/>render candidate .com zone"]
+    validate["named-checkzone<br/>syntax and consistency"]
+    staging["Hidden Primary staging"]
+    active["Hidden Primary active zone"]
+    b["Public Secondary B"]
+    c["Public Secondary C"]
+    db --> render --> validate --> staging -->|"Atomic replacement and reload"| active
     active -->|"NOTIFY / AXFR / IXFR"| b
     active -->|"NOTIFY / AXFR / IXFR"| c
 ```
 
-B02a 将 hidden Primary 和公共 Secondary 分开部署。Zone Writer 通过受认证的发布通道把候选 zone 交给 hidden Primary；Primary 校验并装载后，使用 NOTIFY 和 TSIG 保护的区域传送同步两台公共 Secondary。
+B02a separates the hidden Primary from the public Secondaries. Zone Writer sends a candidate zone through an authenticated publication channel. The Primary validates and loads it, then synchronizes both public Secondaries using NOTIFY and TSIG-protected zone transfers.
 
-公共解析路径只看到 Secondary。查询 `www.example.com` 时，递归解析器首先从 `.com` 获得 `example.com` 的 NS 和 glue，再访问 source 自有权威 DNS 获取最终 A 记录。
+A resolver obtains the `example.com` NS and glue from a public `.com` Secondary and then queries the source-owned authoritative DNS for the final record.
 
-## 与 Registrar 侧的关系
+## Relationship to the Registrar side
 
-Loom 和 Namingo Registry 通过 EPP 相连，但两者数据库不共享。Loom 保存账户、订单、账单和 Registrar 服务状态；Registry 保存注册对象和 sponsoring Registrar 信息。
+Loom and Namingo Registry communicate over EPP but do not share databases. Loom stores accounts, orders, invoices, and Registrar service state. The Registry stores registration objects and sponsoring-Registrar state.
 
-Namingo Registrar 的 WHOIS/RDAP读取 Loom MariaDB，而不是 Registry MariaDB。这样查询服务呈现 Registrar 侧数据，同时 EPP 和 Zone Writer 仍以 Registry 登记结果为准。
+Namingo Registrar WHOIS/RDAP reads Loom MariaDB rather than Registry MariaDB. This exposes the Registrar view while EPP and Zone Writer remain based on the Registry's committed state.
 
-## SeedEmu 部署
-
-B02a 中的核心节点为：
+## SeedEmu deployment
 
 ```text
 10.150.0.74  Loom Registrar frontend and order EPP client
@@ -103,20 +97,18 @@ B02a 中的核心节点为：
 10.153.0.73  .com public Secondary C
 ```
 
-`NamingoRegistryService` 负责生成 Registry 节点所需的数据库、EPP、TLS、Registrar 账户、TLD 和 Zone Writer 配置。`domain_registration.py` 将服务绑定到上述节点，并配置 hidden-primary/public-secondary DNS 拓扑。
+`NamingoRegistryService` generates the database, EPP, TLS, Registrar-account, TLD, and Zone Writer configuration. `domain_registration.py` binds these services to the B02a nodes and configures the hidden-primary/public-secondary topology.
 
-## Agent 观察到的流程
+## Agent-visible workflow
 
-Agent 不直接操作 Registry。它通过 Loom 完成购买，再使用 DNS 工具观察 Registry 的结果：
+The Agent does not operate the Registry directly:
 
-1. `domain.registrar_request` 提交订单和付款，间接触发 Loom EPP provisioning。
-2. Loom 页面和 Namingo WHOIS/RDAP显示 Registrar 侧服务已经生效。
-3. `dns.check_delegation` 检查 Zone Writer 发布的父区 NS/glue 和子区权威数据。
-4. `dns.lookup` 通过两台递归解析器检查完整 DNS 路径。
+1. `domain.registrar_request` submits the Loom order and payment, indirectly triggering EPP provisioning.
+2. Loom and Namingo WHOIS/RDAP expose the active Registrar-side service.
+3. `dns.check_delegation` compares the published parent NS/glue with the child authorities.
+4. `dns.lookup` verifies the complete path through both recursive resolvers.
 
-这使 Agent 面向正常 Registrar 和 DNS 接口工作，而 EPP、Registry 数据库与 zone 发布保持在仿真基础设施内部。
-
-## 相关实现
+## Related implementation
 
 - `seed-emulator/seedemu/services/NamingoRegistryService.py`
 - `seed-emulator/seedemu/services/NamingoRegistrarService.py`
@@ -124,7 +116,7 @@ Agent 不直接操作 Registry。它通过 Loom 完成购买，再使用 DNS 工
 - `seed-emulator/examples/internet/B02a_domain_registration/domain_registration.py`
 - `seedemu-agent-tools/tool-service/seedemu_tool_service/tools/dns/`
 
-## 上游项目
+## Upstream projects
 
 - [Namingo Registry](https://github.com/getnamingo/registry)
 - [Namingo Registry DNS documentation](https://github.com/getnamingo/registry/blob/main/docs/dns.md)

@@ -1,33 +1,33 @@
-# Namingo Registrar 与 Loom 架构
+# Namingo Registrar and Loom architecture
 
-## 整体结构
+## Overall structure
 
-在 B02a 中，Loom 和 Namingo Registrar 共同组成 Registrar 侧，但承担不同工作：Loom 是客户与订单系统，Namingo Registrar 是注册数据查询服务。两者共享 Loom MariaDB 中的 Registrar 业务数据。
+In B02a, Loom and Namingo Registrar form the Registrar side while serving different roles. Loom is the customer and order system; Namingo Registrar supplies registration-data lookup services. Both use the Registrar business data stored in Loom MariaDB.
 
 ```mermaid
 flowchart LR
-    customer["Agent / 客户"]
+    customer["Agent / customer"]
 
-    subgraph registrar_side["Registrar 侧"]
-        loom["Loom HTTPS<br/>账户、产品、订单、账单"]
-        db[("Loom MariaDB<br/>Registrar 业务数据")]
-        order_epp["Loom Namingo EPP client<br/>订单 provisioning"]
+    subgraph registrar_side["Registrar side"]
+        loom["Loom HTTPS<br/>accounts, products, orders, invoices"]
+        db[("Loom MariaDB<br/>Registrar business data")]
+        order_epp["Loom Namingo EPP client<br/>order provisioning"]
         namingo["Namingo Registrar<br/>loom backend"]
         whois["WHOIS :43"]
         rdap["RDAP :80"]
     end
 
-    subgraph registry_side["Registry 侧"]
+    subgraph registry_side["Registry side"]
         registry["Namingo Registry<br/>EPP :700"]
         registry_db[("Registry MariaDB")]
         writer["Zone Writer"]
     end
 
-    dns[".com 权威 DNS"]
+    dns[".com authoritative DNS"]
 
-    customer -->|"HTTPS 页面与表单"| loom
+    customer -->|"HTTPS pages and forms"| loom
     loom --> db
-    loom -->|"付款完成"| order_epp
+    loom -->|"Payment completed"| order_epp
     order_epp -->|"EPP over mutual TLS"| registry
     namingo -->|"loom adapter"| db
     namingo --> whois
@@ -35,13 +35,13 @@ flowchart LR
     registry --> registry_db --> writer --> dns
 ```
 
-这张图中的关键关系是：
+The important relationships are:
 
-- Loom 保存客户、订单、账单和域名服务状态，并在付款后执行 EPP provisioning。
-- Namingo Registrar 使用上游 `loom` backend 读取 Loom 数据，为同一批域名提供 WHOIS/RDAP。
-- Namingo Registry 保存最终的 domain、contact 和 host 注册对象，并驱动 `.com` zone 发布。
+- Loom stores customers, orders, invoices, and domain-service state and performs EPP provisioning after payment.
+- Namingo Registrar reads Loom data through its upstream `loom` backend and exposes WHOIS/RDAP for the same domains.
+- Namingo Registry stores the final domain, contact, and host objects and drives `.com` zone publication.
 
-## 数据流
+## Data flow
 
 ```mermaid
 sequenceDiagram
@@ -53,25 +53,23 @@ sequenceDiagram
     participant D as Loom MariaDB
     participant N as Namingo WHOIS/RDAP
 
-    A->>L: 提交域名、联系人、NS 与 glue
-    L->>D: 创建订单和账单
-    A->>L: 支付账单
-    L->>E: 启动域名 provisioning
+    A->>L: Submit domain, contacts, NS, and glue
+    L->>D: Create order and invoice
+    A->>L: Pay invoice
+    L->>E: Start domain provisioning
     E->>R: contact / host / domain create
-    R-->>E: EPP result 与 transaction ID
-    E-->>L: 更新域名服务状态
-    L->>D: 保存 active service
-    R->>Z: 读取已注册对象
-    Z-->>R: 发布 .com NS/glue
-    N->>D: 按域名读取 Registrar 数据
-    N-->>A: WHOIS 文本或 RDAP JSON
+    R-->>E: EPP result and transaction ID
+    E-->>L: Update domain-service state
+    L->>D: Store active service
+    R->>Z: Read registered objects
+    Z-->>R: Publish .com NS/glue
+    N->>D: Read Registrar data by domain
+    N-->>A: WHOIS text or RDAP JSON
 ```
 
-Registry 和 Loom 各自保存不同视角的数据：Registry 是 TLD 的最终登记簿，Loom 保存 Registrar 的客户和订单视图。WHOIS/RDAP 使用 Loom 视图，DNS 委派则由 Registry 的 Zone Writer 发布。
+The Registry and Loom store different views of the registration. The Registry is the final TLD ledger, while Loom stores the Registrar's customer and order view. WHOIS/RDAP uses the Loom view; Registry Zone Writer publishes the DNS delegation.
 
-## SeedEmu 部署
-
-B02a 将 Loom 和 Namingo Registrar 部署为两个独立节点：
+## SeedEmu deployment
 
 ```text
 10.150.0.74  Loom HTTPS frontend + Loom MariaDB + order EPP client
@@ -79,41 +77,29 @@ B02a 将 Loom 和 Namingo Registrar 部署为两个独立节点：
 10.154.0.73  Namingo Registry EPP + Registry MariaDB + Zone Writer
 ```
 
-`NamingoRegistrarService` 使用如下组合：
+B02a configures `NamingoRegistrarService` with the upstream `loom` backend and an external database connection to Loom MariaDB. A dedicated read-only account lets WHOIS/RDAP query Loom provider, service, contact, and nameserver data. Namingo automation is disabled because Loom owns the order-driven lifecycle.
 
-```python
-registrar.install("namingo-registrar").setBackend("loom").setExternalDatabase(
-    host=LOOM_IP,
-    port=3306,
-    name="loom",
-    username=LOOM_RDDS_DB_USER,
-    password=LOOM_RDDS_DB_PASSWORD,
-)
-```
+The pinned Namingo Registrar adapter and Loom schema use different names for the service-type field. The image build verifies the expected upstream code and applies the compatibility adjustment needed to query Loom's current `services.type` field.
 
-这里的外部数据库是 Loom 自己的 MariaDB，而不是 Registry 数据库。B02a 为 Namingo Registrar 创建只读查询账号，使 WHOIS/RDAP 可以读取 Loom 的 provider、service、contact 和 nameserver 数据。当前组合不启用 Namingo automation，域名生命周期任务由 Loom 负责。
+## Relationship to Agent tools
 
-固定版本的 Namingo Registrar adapter 与固定版本 Loom schema 在服务类型字段上存在命名差异。镜像构建时会检查并应用对应的兼容修正，使 WHOIS/RDAP 查询当前 Loom 的 `services.type` 字段。
+The Agent purchases through Loom rather than Namingo Registrar:
 
-## 与 Agent 工具的关系
+1. `domain.registrar_find` discovers the Loom HTTPS origin.
+2. `domain.registrar_request` accesses Loom from the selected source, maintains the session, and submits registration and payment forms.
+3. Loom performs order handling and EPP provisioning internally.
+4. Namingo WHOIS/RDAP exposes the resulting Registrar data.
+5. `dns.check_delegation` and `dns.lookup` verify delegation and final resolution.
 
-Agent 不直接调用 Namingo Registrar 完成购买。购买入口是 Loom：
+`domain.registrar_request` works with the normal HTML/HTTP frontend instead of defining a private Loom purchase API. Its source-local session supports page discovery, CSRF fields, redirects, and multi-step forms.
 
-1. `domain.registrar_find` 发现 Loom HTTPS origin。
-2. `domain.registrar_request` 从所选 source 访问 Loom 页面、维持 session，并提交注册及支付表单。
-3. Loom 在内部完成订单处理和 EPP provisioning。
-4. 购买后可以通过 Namingo WHOIS/RDAP确认 Registrar 数据已经出现。
-5. `dns.check_delegation` 和 `dns.lookup` 验证 Registry 发布的委派与最终解析。
+## Relationship to DNS
 
-`domain.registrar_request` 面向正常 HTML/HTTP 前端，不为 Loom 固化一套私有购买 API。source-local session 让 Agent 可以连续读取页面、保存 CSRF 字段、处理重定向并完成多个表单步骤。
+After successful registration, Registry Zone Writer adds the `example.com` NS and glue to the `.com` zone. The hidden Primary loads the zone and synchronizes public Secondaries. Resolvers can then follow the delegation to the source-owned `example.com` authorities.
 
-## 与 DNS 的关系
+Ordinary records such as `www.example.com` are updated with `dns.configure` after purchase. Changes to delegated nameservers or glue return to the Registrar/Registry lifecycle.
 
-Namingo Registry 注册成功后，Zone Writer 将 `example.com` 的 NS 和 glue 写入 `.com` zone。隐藏 Primary 装载新 zone，并同步公共 Secondary。递归解析器随后才能沿父区委派访问 source 自有的 `example.com` 权威 DNS。
-
-购买完成后，`www.example.com` 等普通记录由 `dns.configure` 更新，不需要重新购买域名。若变更对外委派的 nameserver 或 glue，则再次进入 Registrar/Registry 生命周期。
-
-## 相关实现
+## Related implementation
 
 - `seed-emulator/seedemu/services/LoomRegistrarService.py`
 - `seed-emulator/seedemu/services/NamingoRegistrarService.py`
@@ -121,9 +107,9 @@ Namingo Registry 注册成功后，Zone Writer 将 `example.com` 的 NS 和 glue
 - `seed-emulator/examples/internet/B02a_domain_registration/domain_registration.py`
 - `seedemu-agent-tools/tool-service/seedemu_tool_service/tools/dns/`
 
-完整的 Agent、Registrar、Registry 和 DNS 架构见 `domain_register_design_zh.md`。
+See `domain_register_design.md` for the complete Agent, Registrar, Registry, and DNS architecture.
 
-## 上游项目
+## Upstream projects
 
 - [Loom](https://github.com/getnamingo/loom)
 - [Namingo Registrar](https://github.com/getnamingo/registrar)

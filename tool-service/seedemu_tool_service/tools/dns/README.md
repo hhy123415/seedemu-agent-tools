@@ -100,8 +100,8 @@ Architecture documentation:
 
 - [End-to-end architecture and Agent workflow](docs/domain_register_design.md)
 - [端到端架构与 Agent 调用流程](docs/domain_register_design_zh.md)
-- [Namingo Registrar and Loom](docs/NamingoRegistrar.md)
-- [Namingo Registry and TLD DNS](docs/NamingoRegistry.md)
+- Namingo Registrar and Loom: [English](docs/NamingoRegistrar_en.md) / [中文](docs/NamingoRegistrar.md)
+- Namingo Registry and TLD DNS: [English](docs/NamingoRegistry_en.md) / [中文](docs/NamingoRegistry.md)
 
 ## `example.com` workflow
 
