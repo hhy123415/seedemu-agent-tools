@@ -55,7 +55,7 @@ def test_tool_registry_lists_network_tools() -> None:
         "dns.lookup",
         "dns.reverse_lookup",
         "dns.trace",
-        "dns.update",
+        "dns.configure",
         "network.inspect_ip_address",
         "network.ping",
         "pki.check_certificate_expiration",
