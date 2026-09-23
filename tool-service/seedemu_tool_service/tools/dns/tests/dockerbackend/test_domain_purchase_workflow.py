@@ -164,9 +164,8 @@ def _wait_for_availability(
             last_error = error
             time.sleep(interval_seconds)
     raise AssertionError(
-        "Loom's EPP path did not become ready within {:.0f} seconds".format(
-            attempts * interval_seconds
-        )
+        f"Loom's EPP path did not become ready within "
+        f"{attempts * interval_seconds:.0f} seconds"
     ) from last_error
 
 
@@ -232,7 +231,28 @@ def test_agent_configures_dns_buys_example_com_and_resolves_it() -> None:
         invalid_payload = json.loads(invalid_check.body)
         assert invalid_payload.get("success") is False, invalid_payload
         assert invalid_payload.get("message") == "Exactly one domain is required."
-        steps.passed(f"{AVAILABLE_ZONE} is available; invalid input is rejected")
+
+        unsupported_check_form = _registrar_request(registry, session_id, "/")
+        assert unsupported_check_form.http_status == 200, unsupported_check_form.stderr
+        unsupported_check = _registrar_request(
+            registry,
+            session_id,
+            "/spark/domain/check",
+            method="POST",
+            fields=list(_hidden_fields(unsupported_check_form.body).items())
+            + [("domains[]", f"www.{AVAILABLE_ZONE}")],
+        )
+        assert unsupported_check.http_status == 422, unsupported_check
+        unsupported_payload = json.loads(unsupported_check.body)
+        assert unsupported_payload.get("success") is False, unsupported_payload
+        assert (
+            unsupported_payload.get("message")
+            == "Only domains directly under the configured TLD can be registered. "
+            "Register the parent domain and create deeper names as DNS records."
+        )
+        steps.passed(
+            f"{AVAILABLE_ZONE} is available; invalid and deeper names are rejected"
+        )
 
         steps.start("order example.com and pay the invoice")
         order_form = _registrar_request(
