@@ -13,6 +13,191 @@ DomainService 提供域名注册、客户购买、DNS 托管和模拟支付服�
 [H11](../../examples/H11_browser_agent/README.md) 增加同容器运行的浏览器和 agent。
 H10 使用 `domain_name_purchase.py`、H11 使用 `browser_agent.py` 生成部署文件；进入 `output` 手动构建启动后，再用 `setup.py` 完成跨容器配置及验证。清理命令见各示例说明。
 
+## 前置要求：更新 SeedEmu DNS 服务
+
+H10/H11 使用扩展后的 `DomainNameService.authorizeRegistry()`。只更新 emuvista
+不够，还需要让实际导入的 SeedEmu 包含这项扩展；旧版本在生成场景时会报
+`AttributeError: 'DomainNameService' object has no attribute 'authorizeRegistry'`。
+只使用 Registry、不开启 DNS 发布的场景不需要此授权接口。
+
+对应更新仅修改 SeedEmu 的 `seedemu/services/DomainNameService.py`：
+
+- 新增 `authorizeRegistry(registry, zones)`，校验 TLD 与 DNS 虚拟节点的对应关系。
+- render 时生成每个 TLD 的 TSIG 密钥、动态更新策略和可选的主从传送配置。
+- 将发布地址及密钥传给 Registry 的 `setDnsAuthorization()`。
+
+H10/H11 默认使用与 emuvista 并列的 `seed-emulator` 源码目录。修改其中的
+`seedemu/services/DomainNameService.py`，按以下四处添加代码；若已经存在对应实现，不要重复添加。
+
+**1. 在文件顶部补充导入：**
+
+```python
+import base64
+import secrets
+import re
+```
+
+**2. 在 `DomainNameService.__init__()` 中，`self.__masters = {}` 后添加：**
+
+```python
+        self.__registryAuthorizations = []
+```
+
+**3. 在 `DomainNameService` 类内添加以下两个完整方法，与 `__init__()` 同级：**
+
+```python
+    def authorizeRegistry(self, registry, zones):
+        """授权 Registry 更新指定 TLD；元组依次为主、可选从 DNS 虚拟节点。
+
+        Authorize a Registry publisher for TLDs mapped to primary and optional
+        secondary DNS virtual nodes. The publisher must provide getTlds() and
+        setDnsAuthorization(tld, address, key). Call before rendering. Keys are
+        generated during rendering; deploy the publisher and DNS nodes together.
+        """
+        if not isinstance(zones, dict) or not zones:
+            raise ValueError('zones must be a non-empty TLD-to-DNS-node mapping')
+        managed = set(registry.getTlds())
+        normalized, servers, hosted = {}, {}, {}
+        for value, names in zones.items():
+            if not isinstance(value, str):
+                raise ValueError('TLD must be a string')
+            tld = value.removeprefix('.').lower()
+            if not re.fullmatch(r'[a-z](?:[a-z0-9-]{0,29}[a-z0-9])?', tld):
+                raise ValueError(f'Invalid TLD: {value}')
+            if tld in normalized or tld not in managed:
+                raise ValueError(f'Duplicate or unmanaged DNS TLD: {value}')
+            if (not isinstance(names, (tuple, list)) or not 1 <= len(names) <= 2
+                    or any(not isinstance(name, str) or not name for name in names)
+                    or len(set(names)) != len(names)):
+                raise ValueError(f'{value} requires one primary and optionally a distinct secondary virtual node')
+            normalized[tld] = tuple(names)
+            for name in names:
+                server = self._pending_targets.get(name)
+                if server is None:
+                    raise ValueError(f'Unknown DNS virtual node: {name}')
+                if tld + '.' not in server.getZones():
+                    raise ValueError(f'{name} does not host {tld}.')
+                if server.getIncludePath(tld + '.') is not None:
+                    raise ValueError(f'{name} already has a custom include for {tld}.')
+                servers[name] = server
+                hosted.setdefault(name, set()).add(tld + '.')
+        for name, server in servers.items():
+            if set(server.getZones()) != hosted[name]:
+                raise ValueError(f'All zones hosted by {name} must be included in zones')
+        # 完整校验后才修改 include。 / Mutate includes only after complete validation.
+        for tld, names in normalized.items():
+            for name in names:
+                servers[name].setInclude(tld + '.', f'/etc/bind/registry-{tld}.conf')
+        self.__registryAuthorizations.append((registry, normalized))
+        return self
+
+    def __renderRegistryAuthorizations(self, emulator):
+        """渲染 DNS 授权，并将共享密钥交给发布端。 / Render DNS authorization and pass shared keys to publishers."""
+        def new_key(identity):
+            secret = base64.b64encode(secrets.token_bytes(32)).decode('ascii')
+            return f'key "{identity}" {{ algorithm hmac-sha256; secret "{secret}"; }};\n'
+
+        for registry, zones in self.__registryAuthorizations:
+            if set(zones) - set(registry.getTlds()):
+                raise ValueError('Authorized TLDs must remain managed by Registry')
+            for tld, vnodes in zones.items():
+                zone = tld + '.'
+                nodes = [emulator.getServerByVirtualNodeName(name).getNode() for name in vnodes]
+                primary = nodes[0]
+                primary_ip = str(primary.getInterfaces()[0].getAddress())
+                publish_id, transfer_id = f'registry-{tld}-publisher', f'{tld}-zone-transfer'
+                bind_path = f'/etc/bind/keys/{tld}-publisher.key'
+                transfer_path = f'/etc/bind/keys/{tld}-transfer.key'
+                zone_path = f'/etc/bind/zones/{zone}'
+                config_path = f'/etc/bind/registry-{tld}.conf'
+                publish_key, transfer_key = new_key(publish_id), new_key(transfer_id)
+                records = self.getZone(zone).getRecords()
+
+                # 保护区域顶点和名称服务器记录，兼容显式 TTL 和 IN 类字段。
+                # Protect the apex and name server records, including explicit TTL and IN fields.
+                protected = {zone}
+                for record in records:
+                    fields = record.split(';', 1)[0].split()
+                    upper = [field.upper() for field in fields]
+                    if fields and fields[0].lower() in ('@', zone) and 'NS' in upper:
+                        index = upper.index('NS')
+                        if index + 1 < len(fields):
+                            name = fields[index + 1].lower()
+                            protected.add(name if name.endswith('.') else name + '.' + zone)
+                policy = '\n'.join(f'    deny {publish_id} name {name} ANY;' for name in sorted(protected))
+                policy += f'\n    grant {publish_id} subdomain {zone} NS A AAAA;'
+                transfer = '    allow-transfer { none; };\n    notify no;'
+                if len(nodes) == 2:
+                    secondary_ip = str(nodes[1].getInterfaces()[0].getAddress())
+                    transfer = (f'    allow-transfer {{ key "{transfer_id}"; }};\n'
+                                '    notify explicit;\n'
+                                f'    also-notify {{ {secondary_ip} key "{transfer_id}"; }};')
+                primary.setFile(config_path, f'''include "{bind_path}";
+include "{transfer_path}";
+zone "{zone}" {{
+    type master;
+    file "{zone_path}";
+    update-policy {{
+{policy}
+    }};
+{transfer}
+}};
+''')
+                if len(nodes) == 2:
+                    nodes[1].setFile(config_path, f'''include "{transfer_path}";
+zone "{zone}" {{
+    type slave;
+    file "{zone_path}";
+    masters {{ {primary_ip} key "{transfer_id}"; }};
+    allow-notify {{ key "{transfer_id}"; }};
+    allow-transfer {{ none; }};
+    allow-update-forwarding {{ none; }};
+}};
+''')
+                primary.setFile(bind_path, publish_key)
+                for node in nodes:
+                    # 自定义 include 会跳过默认区域文件生成，因此显式补写。
+                    # Custom includes skip default zone files, so write them explicitly.
+                    node.setFile(zone_path, '\n'.join(records) + '\n')
+                    options = node.getFile('/etc/bind/named.conf.options')
+                    options.setContent(options.get()[1].replace('allow-update { any; };', 'allow-update { none; };'))
+                    node.setFile(transfer_path, transfer_key)
+                    permissions = ('chown -R root:bind /etc/bind/keys && '
+                                   'chmod 750 /etc/bind/keys && chmod 640 /etc/bind/keys/*.key')
+                    node.addBuildCommandAtEnd(permissions)
+                    node.insertStartCommand(0, permissions)
+                registry.setDnsAuthorization(tld, primary_ip, publish_key)
+```
+
+**4. 将 `DomainNameService.render()` 更新为以下代码，保留原有渲染流程，并在末尾生成授权配置：**
+
+```python
+    def render(self, emulator: Emulator):
+        if self.__autoNs:
+            self._log('Setting up NS records...')
+            self.__autoNameServer(self.__rootZone)
+
+        super().render(emulator)
+        self.__renderRegistryAuthorizations(emulator)
+```
+
+在 emuvista 根目录，使用运行示例的 Python 环境检查实际导入路径和接口：
+
+```bash
+PYTHONPATH=../seed-emulator python -c \
+  'import inspect; from seedemu.services import DomainNameService; print(inspect.getfile(DomainNameService)); print("authorizeRegistry:", hasattr(DomainNameService, "authorizeRegistry"))'
+```
+
+确认路径指向同级 `seed-emulator` 源码，且输出 `authorizeRegistry: True`。
+若原文件已有其他自定义逻辑，合并上述新增内容，保留原有行为。
+
+更新 Python 源码不会修改已生成的镜像或运行容器。还需按所选
+[H10](../../examples/H10_domain_name_purchase/README.md) 或
+[H11](../../examples/H11_browser_agent/README.md) 的流程重新生成 output，
+手动构建、启动并执行 setup。每次 render 会生成新的 TSIG 密钥，
+Registry 与相关 TLD DNS 容器必须使用同一轮生成的配置同步更新，不能只重建其中一端。
+接口检查只验证代码可用；实际发布仍需在部署后验证父区委派记录和主从同步。
+
 ## 使用
 
 使用能够导入 `DomainService` 和 `seedemu` 的 Python 环境。在已创建的模拟器 `emu` 上配置服务：
@@ -143,7 +328,8 @@ DomainService/
 
 模板只描述文件结构；账号参数由 Server 传入。PHP 和 SQL 字符串分别转义，
 Web 配置中的数据库密码通过带引号的 dotenv 值写入。
-`DomainService` 顶层继续导出 `RegistryService`、`RegistryServer` 和 DNS 授权函数。
+`DomainService` 顶层导出 `RegistryService`、`RegistryServer` 等服务类；
+DNS 授权通过 SeedEmu 的 `DomainNameService.authorizeRegistry()` 调用。
 
 Registry 模板包括 `database.sql`、`database.sh`、`initialize-tlds.php`、
 `configure-web.php`、`configure-component.php`、`registry.conf`、`web.sh`，
