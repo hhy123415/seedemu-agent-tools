@@ -2,7 +2,7 @@
 const fs = require('fs');
 const { chromium } = require(process.env.PLAYWRIGHT_DRIVER_DIR + '/package');
 (async () => {
-  const config = JSON.parse(fs.readFileSync('/run/h11/browser_connection.json', 'utf8'));
+  const config = JSON.parse(fs.readFileSync('/run/h13/browser_connection.json', 'utf8'));
   const server = await chromium.launchServer({
     host: '127.0.0.1', port: 8080, wsPath: new URL(config.ws_endpoint).pathname,
     headless: false, args: ['--start-maximized', '--disable-dev-shm-usage'],

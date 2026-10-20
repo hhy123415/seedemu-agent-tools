@@ -55,7 +55,7 @@ header{flex-shrink:0;gap:12px}.header-actions{display:flex;gap:8px}
 <section class="settings">
 <button id="clearKey" class="secondary">清除已保存 Key</button>
 </section>
-<small>点击“保存配置”将模型配置写入 H11 的 agent/model_profiles.json，容器重建后仍保留。未保存的输入只存在当前页面内存中。浏览器和工具固定在本容器执行。聊天不保存；新建对话会重置浏览器会话，但不会撤销已执行的业务操作。</small>
+<small>点击“保存配置”将模型配置写入 H13 的 agent/model_profiles.json，容器重建后仍保留。未保存的输入只存在当前页面内存中。浏览器和工具固定在本容器执行。聊天不保存；新建对话会重置浏览器会话，但不会撤销已执行的业务操作。</small>
 </details></aside>
 <div class="conversation">
 <div id="status" role="status">正在连接…</div>
@@ -65,7 +65,7 @@ header{flex-shrink:0;gap:12px}.header-actions{display:flex;gap:8px}
 </div>
 <section id="browserPanel" aria-label="真实浏览器">
 <div class="browser-toolbar"><strong>实时浏览器</strong><button id="browserConnect">启动浏览器</button><button id="browserReconnect" class="secondary" disabled>重新连接画面</button><button id="browserClose" class="secondary" disabled>关闭会话</button></div>
-<div id="browserInfo" role="status">H11 · 本容器 Chromium 浏览器</div>
+<div id="browserInfo" role="status">H13 · 本容器 Chromium 浏览器</div>
 <div id="browserEmpty">点击“启动浏览器”连接本容器中的 Chromium。<br>这里实时显示 agent 的浏览器操作，仅供观看，不接受键盘和鼠标输入。</div>
 <iframe id="browserFrame" title="Agent 实时浏览器桌面" hidden></iframe>
 </section>

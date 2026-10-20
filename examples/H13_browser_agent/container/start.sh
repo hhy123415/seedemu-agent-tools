@@ -40,12 +40,12 @@ def read_hosts(path):
 def main():
     """在服务启动前配置网络，保留 Docker 默认网关。 / Configure networking before services start, retaining Docker's default gateway."""
     subprocess.run(['ip', 'route', 'replace', '10.0.0.0/8', 'via', os.environ['SIM_GATEWAY']], check=True)
-    Path('/run/h11').mkdir(parents=True, exist_ok=True)
+    Path('/run/h13').mkdir(parents=True, exist_ok=True)
     lines = ['no-resolv', 'bind-interfaces', 'listen-address=127.0.0.1', 'server=10.153.0.53']
     # 优先读取宿主机挂载文件，独立镜像使用构建时副本。 / Prefer the host-mounted file; standalone images use the build-time copy.
     config = Path('/opt/network-config/egress_urls.txt')
     if not config.exists():
-        config = Path('/opt/h11/egress_urls.txt')
+        config = Path('/opt/h13/egress_urls.txt')
     hosts = read_hosts(config)
     route = json.loads(subprocess.check_output(['ip', '-j', 'route', 'show', 'default']))
     for name in sorted(host for host in hosts if host):
@@ -66,14 +66,14 @@ def main():
         if not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?', name):
             raise ValueError('Invalid hostname in egress_urls.txt')
         lines.append('server=/' + name + '/127.0.0.11')
-    Path('/run/h11/dnsmasq.conf').write_text('\n'.join(lines) + '\n')
+    Path('/run/h13/dnsmasq.conf').write_text('\n'.join(lines) + '\n')
     Path('/etc/resolv.conf').write_text('nameserver 127.0.0.1\n')
 
 
 if __name__ == '__main__':
     main()
 NETWORK_PY
-mkdir -p /run/h11
+mkdir -p /run/h13
 # 生成本容器浏览器连接令牌。 / Generate a connection token for the colocated browser.
 python3 - <<'PY'
 import json
@@ -83,7 +83,7 @@ import secrets
 config = {'ws_endpoint': 'ws://127.0.0.1:8080/' + secrets.token_urlsafe(32),
           'assets_url': 'http://127.0.0.1:8081', 'vnc_host': '127.0.0.1',
           'view_port': 5900}
-path = Path('/run/h11/browser_connection.json')
+path = Path('/run/h13/browser_connection.json')
 path.write_text(json.dumps(config))
 path.chmod(0o600)
 
@@ -96,7 +96,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
-dnsmasq --keep-in-foreground --conf-file=/run/h11/dnsmasq.conf &
+dnsmasq --keep-in-foreground --conf-file=/run/h13/dnsmasq.conf &
 pids+=("$!")
 # 容器重启会保留 /tmp；清理不可用显示服务留下的锁和套接字。
 # Container restarts preserve /tmp; remove stale files when the display is unavailable.
@@ -120,7 +120,7 @@ pids+=("$!")
 pids+=("$!")
 export PLAYWRIGHT_DRIVER_DIR
 PLAYWRIGHT_DRIVER_DIR=$(/opt/venv/bin/python -c 'import pathlib, playwright; print(pathlib.Path(playwright.__file__).parent / "driver")')
-"$PLAYWRIGHT_DRIVER_DIR/node" /opt/h11/launch_browser.js &
+"$PLAYWRIGHT_DRIVER_DIR/node" /opt/h13/launch_browser.js &
 pids+=("$!")
 /opt/venv/bin/uvicorn agent_web:app --host 0.0.0.0 --port 8089 --ws-max-size 8388608 --no-access-log &
 pids+=("$!")

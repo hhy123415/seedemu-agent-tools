@@ -1,4 +1,4 @@
-"""连接 H11 同容器浏览器，不修改 Docker。 / Connect to the colocated H11 browser without Docker mutations."""
+"""连接 H13 同容器浏览器，不修改 Docker。 / Connect to the colocated H13 browser without Docker mutations."""
 
 import base64
 import hashlib
@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CONFIG = Path('/run/h11/browser_connection.json')
+DEFAULT_CONFIG = Path('/run/h13/browser_connection.json')
 
 
 # 读取运行时连接配置，不固定连接凭据。 / Read runtime connection settings without hardcoded credentials.
@@ -28,7 +28,7 @@ def connection_config():
         return data
     except (OSError, ValueError, KeyError) as error:
         raise RuntimeError(
-            "找不到 H11 浏览器连接配置；请检查容器启动日志，"
+            "找不到 H13 浏览器连接配置；请检查容器启动日志，"
             "或用 AGENT_BROWSER_CONFIG 指定 browser_connection.json"
         ) from error
 

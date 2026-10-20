@@ -34,14 +34,14 @@ asyncio.run(check())
 
 
 def main(argv=None):
-    """复用 H10 初始化流程，再验证浏览器连接。 / Reuse H10 setup and then verify browser connectivity."""
+    """复用 H12 初始化流程，再验证浏览器连接。 / Reuse H12 setup and then verify browser connectivity."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=HERE / 'output')
     parser.add_argument('--dns-product-id', type=int)
     parser.add_argument('--timeout', type=int, default=240)
     args = parser.parse_args(argv)
     output = args.output.resolve()
-    command = [sys.executable, str(HERE.parent / 'H10_domain_name_purchase/setup.py'),
+    command = [sys.executable, str(HERE.parent / 'H12_domain_name_purchase/setup.py'),
                '--output', str(output), '--timeout', str(args.timeout)]
     if args.dns_product_id is not None:
         command += ['--dns-product-id', str(args.dns_product_id)]

@@ -9,13 +9,13 @@ DomainService 提供域名注册、客户购买、DNS 托管和模拟支付服�
 | `DnsHostingService` | 主从权威 DNS、托管 API 和 DNS 商品 |
 | `FakePaymentService` | 模拟收银台和 FOSSBilling 支付网关 |
 
-[H10](../../examples/H10_domain_name_purchase/README.md) 提供完整域名购买环境；
-[H11](../../examples/H11_browser_agent/README.md) 增加同容器运行的浏览器和 agent。
-H10 使用 `domain_name_purchase.py`、H11 使用 `browser_agent.py` 生成部署文件；进入 `output` 手动构建启动后，再用 `setup.py` 完成跨容器配置及验证。清理命令见各示例说明。
+[H12](../../examples/H12_domain_name_purchase/README.md) 提供完整域名购买环境；
+[H13](../../examples/H13_browser_agent/README.md) 增加同容器运行的浏览器和 agent。
+H12 使用 `domain_name_purchase.py`、H13 使用 `browser_agent.py` 生成部署文件；进入 `output` 手动构建启动后，再用 `setup.py` 完成跨容器配置及验证。清理命令见各示例说明。
 
 ## 前置要求：更新 SeedEmu DNS 服务
 
-H10/H11 使用扩展后的 `DomainNameService.authorizeRegistry()`。只更新 emuvista
+H12/H13 使用扩展后的 `DomainNameService.authorizeRegistry()`。只更新 emuvista
 不够，还需要让实际导入的 SeedEmu 包含这项扩展；旧版本在生成场景时会报
 `AttributeError: 'DomainNameService' object has no attribute 'authorizeRegistry'`。
 只使用 Registry、不开启 DNS 发布的场景不需要此授权接口。
@@ -26,7 +26,7 @@ H10/H11 使用扩展后的 `DomainNameService.authorizeRegistry()`。只更新 e
 - render 时生成每个 TLD 的 TSIG 密钥、动态更新策略和可选的主从传送配置。
 - 将发布地址及密钥传给 Registry 的 `setDnsAuthorization()`。
 
-H10/H11 默认使用与 emuvista 并列的 `seed-emulator` 源码目录。修改其中的
+H12/H13 默认使用与 emuvista 并列的 `seed-emulator` 源码目录。修改其中的
 `seedemu/services/DomainNameService.py`，按以下四处添加代码；若已经存在对应实现，不要重复添加。
 
 **1. 在文件顶部补充导入：**
@@ -192,8 +192,8 @@ PYTHONPATH=../seed-emulator python -c \
 若原文件已有其他自定义逻辑，合并上述新增内容，保留原有行为。
 
 更新 Python 源码不会修改已生成的镜像或运行容器。还需按所选
-[H10](../../examples/H10_domain_name_purchase/README.md) 或
-[H11](../../examples/H11_browser_agent/README.md) 的流程重新生成 output，
+[H12](../../examples/H12_domain_name_purchase/README.md) 或
+[H13](../../examples/H13_browser_agent/README.md) 的流程重新生成 output，
 手动构建、启动并执行 setup。每次 render 会生成新的 TSIG 密钥，
 Registry 与相关 TLD DNS 容器必须使用同一轮生成的配置同步更新，不能只重建其中一端。
 接口检查只验证代码可用；实际发布仍需在部署后验证父区委派记录和主从同步。
@@ -239,7 +239,7 @@ Registry 和 FOSSBilling 的 Web 端口为 `8080`；FakePayment 的内部端口�
 Registry 和 FOSSBilling 位于不同容器，因此可以使用相同的容器端口，
 但映射到同一宿主机时应使用不同的宿主机端口。
 
-H10 示例在入口中配置：
+H12 示例在入口中配置：
 
 ```python
 # Registry：宿主机 18081 转发到 Registry 容器 8080。
@@ -382,11 +382,11 @@ FOSSBilling 的应用安装由服务生成的 `initialize-fossbilling.py` 在容
 结账逻辑在事务提交后再开通订单。
 
 初始化参数含仿真凭据，生成文件限制为 root 可读；构建目录和模拟器快照也包含这些参数。
-具体运行命令见 [H10 示例](../../examples/H10_domain_name_purchase/README.md)。
+具体运行命令见 [H12 示例](../../examples/H12_domain_name_purchase/README.md)。
 
 ## 重建与初始化示例
 
-在 `examples/H10_domain_name_purchase` 目录，使用已安装 SeedEmu 依赖的虚拟环境依次运行：
+在 `examples/H12_domain_name_purchase` 目录，使用已安装 SeedEmu 依赖的虚拟环境依次运行：
 
 ```bash
 python domain_name_purchase.py
@@ -400,14 +400,14 @@ python setup.py
 `domain_name_purchase.py` 固定构建 Registry、FOSSBilling、DNS Hosting 和 FakePayment，只生成部署文件，需进入 `output` 手动执行 `docker compose build` 和 `docker compose up -d`；各服务在启动时完成本地初始化，`setup.py` 负责跨容器配置及验证。
 `setup.py` 等待自动初始化后执行验证。跨容器配置失败可重跑 setup；本地初始化失败需先查看日志、修复并重启对应容器。
 Python 入口不调用 Docker 构建或启动命令。
-详见 [启动说明](../../examples/H10_domain_name_purchase/README.md)。
+详见 [启动说明](../../examples/H12_domain_name_purchase/README.md)。
 
 ## DNS Hosting 与 Registry 委派发布
 
 `DnsHostingService` 集成固定版本 BIND API 和 FOSSBilling DNS Hosting 扩展。示例入口为
-[`domain_name_purchase.py`](../../examples/H10_domain_name_purchase/domain_name_purchase.py)。
+[`domain_name_purchase.py`](../../examples/H12_domain_name_purchase/domain_name_purchase.py)。
 
-在 `examples/H10_domain_name_purchase` 下运行：
+在 `examples/H12_domain_name_purchase` 下运行：
 
 ```bash
 python domain_name_purchase.py
@@ -489,9 +489,9 @@ host 登记不等于为域名设置 NS 委派，也不修改静态区的网站�
 
 `FakePaymentService` 为域名购买环境增加独立收银台及
 FOSSBilling 支付适配器，仅用于仿真，不涉及真实资金。入口与其他场景放在同一目录：
-`examples/H10_domain_name_purchase/domain_name_purchase.py`。
+`examples/H12_domain_name_purchase/domain_name_purchase.py`。
 
-在 `examples/H10_domain_name_purchase` 下使用已配置的虚拟环境执行：
+在 `examples/H12_domain_name_purchase` 下使用已配置的虚拟环境执行：
 
 ```bash
 python domain_name_purchase.py
@@ -551,7 +551,7 @@ FOSSBilling 浏览器 Host 映射为浏览器可访问的收银台 URL。修改�
 
 setup 会先检查完整环境的组件配置；已部署容器缺少 DNS Hosting 或支付组件时会明确报错，需先重建完整场景，再运行 setup。仅运行 setup 无法安装镜像中缺少的组件。
 
-清理当前示例容器、网络和数据卷时，在 `examples/H10_domain_name_purchase` 下执行：
+清理当前示例容器、网络和数据卷时，在 `examples/H12_domain_name_purchase` 下执行：
 
 ```bash
 docker compose -f output/docker-compose.yml down --remove-orphans --volumes
@@ -562,16 +562,16 @@ docker compose -f output/docker-compose.yml down --remove-orphans --volumes
 容器可写层及项目数据卷会被删除，镜像、生成文件、外部数据卷和宿主机绑定挂载目录会保留。
 清理命令不会自动执行构建或初始化。
 
-## H11：浏览器与 Agent 同容器
+## H13：浏览器与 Agent 同容器
 
-[H11 使用说明](../../examples/H11_browser_agent/README.md) 提供完整域名服务加 browser-agent 的独立示例。
+[H13 使用说明](../../examples/H13_browser_agent/README.md) 提供完整域名服务加 browser-agent 的独立示例。
 通过 `Docker.attachCustomContainer()` 接入 AS154/net0，而非占用原有 Host。
 Agent 网页映射到 `http://localhost:18089/`，agent 和 Chromium 均安装在该容器镜像中。
-出网地址填写在 H11 的 `egress_urls.txt`，每行一个 URL、域名或 IP；启动时自动配置 DNS 和路由。
+出网地址填写在 H13 的 `egress_urls.txt`，每行一个 URL、域名或 IP；启动时自动配置 DNS 和路由。
 修改地址后重启 browser-agent 即可，无需修改网络脚本或重建镜像（首次应用此功能需重新生成配置并手动构建启动容器）。
-在 H11 目录运行 `python browser_agent.py`，进入 `output` 执行 `docker compose build`、`docker compose up -d`，返回 H11 后运行 `python setup.py`。
+在 H13 目录运行 `python browser_agent.py`，进入 `output` 执行 `docker compose build`、`docker compose up -d`，返回 H13 后运行 `python setup.py`。
 清理使用 `docker compose -f output/docker-compose.yml down --remove-orphans --volumes`，自定义输出目录需替换配置路径。
-H10 和 H11 默认使用同一 Compose 项目和业务端口，应作为替代场景运行。
+H12 和 H13 默认使用同一 Compose 项目和业务端口，应作为替代场景运行。
 
 ## 构建缓存与安装失败
 
@@ -584,7 +584,7 @@ apt 下载保存在共享的 `/var/cache/apt` 构建缓存中；Composer 下载�
 apt 下载启用最多三次重试和连接超时；软件源配置及 Composer 安装最多尝试三次，
 最终失败仍返回非零退出码。输出保留工具原始日志。
 
-H11 另外缓存 pip 下载，将系统依赖、桌面组件、Python 包、Chromium 系统依赖及
+H13 另外缓存 pip 下载，将系统依赖、桌面组件、Python 包、Chromium 系统依赖及
 浏览器安装拆开。agent 源码和模型配置在这些依赖层之后复制，修改源码不会主动重装依赖。
 
 首次应用新的 Dockerfile 会重建受影响层；之后指令和基础镜像未变时复用成功层。

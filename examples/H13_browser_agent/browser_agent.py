@@ -6,8 +6,8 @@ from pathlib import Path
 import sys
 
 HERE = Path(__file__).resolve().parent
-H10 = HERE.parent / 'H10_domain_name_purchase'
-sys.path.insert(0, str(H10))
+H12 = HERE.parent / 'H12_domain_name_purchase'
+sys.path.insert(0, str(H12))
 from domain_name_purchase import build_emulator
 from container.prepare_context import prepare_context
 from seedemu.compiler import Docker, Platform
