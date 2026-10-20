@@ -1,10 +1,34 @@
 """安装 FOSSBilling 并写入本地运行配置。 / Install FOSSBilling and write local runtime settings."""
 import json
-from ..build_dependencies import apt_install, PHP_REPOSITORY
+import shlex
 from .template import FossBillingFileTemplates
 from .fossbilling_defaults import FOSSBILLING_VERSION, NAMINGO_EPP_INSTALLER_COMMIT
 from ..RegistryService.registry_install import sql_string
 
+
+# 本服务的构建依赖命令。 / Build dependency commands for this service.
+APT_CACHE = '--mount=type=cache,id=domainservice-apt,target=/var/cache/apt,sharing=locked '
+APT_OPTIONS = '-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
+APT_PREPARE = ('rm -f /etc/apt/apt.conf.d/docker-clean && '
+               'printf \'%s\\n\' \'Binary::apt::APT::Keep-Downloaded-Packages "true";\' '
+               '> /etc/apt/apt.conf.d/keep-cache && ')
+
+
+def apt_install(packages):
+    """在同层更新索引并安装包，仅缓存下载文件且串行访问缓存。 / Update indexes and install in one layer, caching downloads with exclusive access."""
+    return (APT_CACHE + APT_PREPARE + 'apt-get ' + APT_OPTIONS + 'update && '
+            'DEBIAN_FRONTEND=noninteractive apt-get ' + APT_OPTIONS + 'install -y '
+            + ' '.join(shlex.quote(package) for package in packages.split()))
+
+
+def retry(command):
+    """最多执行三次，最终失败保留原退出码。 / Attempt at most three times and preserve the final failure status."""
+    return ('attempt=0; while true; do ' + command + '; result=$?; '
+            '[ "$result" -eq 0 ] && break; attempt=$((attempt + 1)); '
+            '[ "$attempt" -lt 3 ] || exit "$result"; sleep 5; done')
+
+
+PHP_REPOSITORY = retry('add-apt-repository --no-update -y ppa:ondrej/php')
 
 def install_fossbilling(host) -> None:
     """安装发行包和 Namingo EPP 模块。 / Install the release and Namingo EPP adapter."""
