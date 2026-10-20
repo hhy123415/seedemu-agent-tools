@@ -1,6 +1,0 @@
-local_config.json
-model_profiles.json
-.profiles-*
-__pycache__/
-.pytest_cache/
-.browser-runtime/
