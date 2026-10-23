@@ -1,15 +1,14 @@
 <?php
-// 配置站点 URL。 / Configure the site URL.
+// Configure the site URL.
 
 $path = '/var/www/fossbilling/config.php';
 $url = URL_PLACEHOLDER;
-$browserHosts = BROWSER_HOSTS_PLACEHOLDER;
-// 仅明确允许的浏览器入口可覆盖内部地址。 / Only explicitly allowed browser origins may override the simulation URL.
-// CLI、cron 和其他 Host 保留内部地址。 / CLI, cron, and other Hosts retain the internal canonical origin.
+$port = FORWARDED_PORT_PLACEHOLDER;
+// Accept only local origins derived from port forwarding; internal requests and CLI keep the internal URL.
 $expression = "/* SEED_LOCAL_URL_BEGIN */ (PHP_SAPI !== 'cli' && "
     . "in_array(strtolower(\$_SERVER['HTTP_HOST'] ?? ''), "
-    . var_export($browserHosts, true) . ", true) "
-    . "? strtolower(\$_SERVER['HTTP_HOST']) . '/' : " . var_export($url, true)
+    . var_export($port === null ? [] : ["localhost:$port", "127.0.0.1:$port"], true)
+    . ", true) ? strtolower(\$_SERVER['HTTP_HOST']) . '/' : " . var_export($url, true)
     . ") /* SEED_LOCAL_URL_END */";
 $text = file_get_contents($path);
 $prefix = '([\'"]url[\'"]\s*=>\s*)';
@@ -22,10 +21,10 @@ if ($count !== 1 || $updated === null) {
     throw new RuntimeException('Expected exactly one url entry in config.php');
 }
 if ($updated === $text) {
-    echo "PASS FOSSBilling internal and localhost URLs already configured\n";
+    echo "PASS FOSSBilling URLs already configured\n";
     exit(0);
 }
-// Nginx 禁止访问 data/，临时配置不可下载。 / Nginx denies data/ so temporary configuration cannot be downloaded.
+// Nginx denies data/ so temporary configuration cannot be downloaded.
 $temp = tempnam(dirname($path) . '/data', 'site-url-');
 try {
     if (file_put_contents($temp, $updated, LOCK_EX) === false) {
@@ -44,4 +43,4 @@ try {
 } finally {
     if (is_file($temp)) { unlink($temp); }
 }
-echo "PASS FOSSBilling internal and localhost URLs configured\n";
+echo "PASS FOSSBilling URLs configured\n";

@@ -1,5 +1,5 @@
 <?php
-/** 创建 FOSSBilling EPP 账号。 / Create the FOSSBilling EPP registrar account. */
+/** Create the FOSSBilling EPP registrar account. */
 declare(strict_types=1);
 
 $db = new PDO(
@@ -52,7 +52,6 @@ if ($existing) {
 
 $allow = $db->prepare('INSERT IGNORE INTO registrar_whitelist (registrar_id, addr) VALUES (?, ?)');
 $allow->execute([$registrarId, '__EPP_SOURCE_IP__']);
-// 预置域名使用当前配置的 TLD，已有其他归属时拒绝覆盖。
 // Reserve domains against configured TLDs and refuse to overwrite another registrar's ownership.
 $findDomain = $db->prepare('SELECT clid FROM domain WHERE name = ?');
 $findTld = $db->prepare('SELECT id FROM domain_tld WHERE tld IN (?, ?)');

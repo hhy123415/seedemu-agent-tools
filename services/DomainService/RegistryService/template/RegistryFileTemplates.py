@@ -1,6 +1,4 @@
-"""读取 Registry 的 SQL、PHP、Shell 和 Nginx 模板文件，统一组织为按文件名索引的模板字典。
-
-Load SQL, PHP, shell, and Nginx templates into a dictionary keyed by filename.
+"""Load SQL, PHP, shell, and Nginx templates into a dictionary keyed by filename.
 """
 from pathlib import Path
 
@@ -8,7 +6,7 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent / 'files_registry'
 
 
 def get_file_content(filename):
-    """以 UTF-8 读取相对于模板目录的文件。 / Read a file relative to the template directory as UTF-8."""
+    """Read a file relative to the template directory as UTF-8."""
     return (_TEMPLATE_DIR / filename).read_text(encoding='utf-8')
 
 

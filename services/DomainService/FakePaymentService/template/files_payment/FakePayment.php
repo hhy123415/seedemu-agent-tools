@@ -1,28 +1,28 @@
 <?php
 declare(strict_types=1);
 
-/** FOSSBilling 0.8.7 模拟支付适配器。 / Simulation payment adapter for FOSSBilling 0.8.7. */
+/** Simulation payment adapter for FOSSBilling 0.8.7. */
 class Payment_Adapter_FakePayment implements FOSSBilling\InjectionAwareInterface
 {
     protected ?Pimple\Container $di = null;
 
-    /** 保存网关参数。 / Store gateway settings. */
+    /** Store gateway settings. */
     public function __construct(private array $config) {}
 
-    /** 设置依赖容器。 / Set the dependency container. */
+    /** Set the dependency container. */
     public function setDi(Pimple\Container $di): void { $this->di = $di; }
 
-    /** 读取依赖容器。 / Return the dependency container. */
+    /** Return the dependency container. */
     public function getDi(): ?Pimple\Container { return $this->di; }
 
-    /** 声明单次仿真付款能力。 / Declare support for one-time simulation payments. */
+    /** Declare support for one-time simulation payments. */
     public static function getConfig(): array
     {
         return [
             'supports_one_time_payments' => true,
             'supports_subscriptions' => false,
             'description' => 'B02d 本地仿真支付，不涉及真实资金。',
-            // 使用发行包自带的图标并提供结账所需字段。 / Use the bundled icon and supply all fields required by checkout.
+            // Use the bundled icon and supply all fields required by checkout.
             'logo' => [
                 'logo' => 'default.png',
                 'height' => '50px',
@@ -32,19 +32,19 @@ class Payment_Adapter_FakePayment implements FOSSBilling\InjectionAwareInterface
         ];
     }
 
-    /** 读取服务生成的地址配置。 / Read service-generated endpoint settings. */
+    /** Read service-generated endpoint settings. */
     private function settings(): array
     {
-        return json_decode(file_get_contents('/opt/b02d/payment-config.json'), true, 512, JSON_THROW_ON_ERROR);
+        return json_decode(file_get_contents('/opt/fake-payment/payment-config.json'), true, 512, JSON_THROW_ON_ERROR);
     }
 
-    /** 读取共享签名密钥。 / Read the shared signing secret. */
+    /** Read the shared signing secret. */
     private function secret(): string
     {
-        return trim(file_get_contents('/opt/b02d/payment-secret'));
+        return trim(file_get_contents('/opt/fake-payment/payment-secret'));
     }
 
-    /** 生成已签名的收银台表单。 / Generate a signed checkout form. */
+    /** Embed a signed payment form in the invoice. */
     public function getHtml(FOSSBilling\Api\Proxy $api_admin, int $invoice_id, bool $subscription): string
     {
         if ($subscription) {
@@ -69,19 +69,28 @@ class Payment_Adapter_FakePayment implements FOSSBilling\InjectionAwareInterface
         $values = [(string) $invoice_id, $amount, $currency, $notify];
         $signature = hash_hmac('sha256', implode('|', $values), $this->secret());
         $fields = array_combine(['invoice', 'amount', 'currency', 'notify', 'signature'], [...$values, $signature]);
-        // 根据明确配置的浏览器入口选择收银台，否则使用仿真网络地址。
         // Select checkout by explicitly configured browser origin, otherwise use the simulation address.
         $host = strtolower($_SERVER['HTTP_HOST'] ?? '');
         $paymentUrl = $settings['browser_urls'][$host] ?? $settings['payment_url'];
-        $html = '<form method="post" action="' . htmlspecialchars($paymentUrl, ENT_QUOTES) . '">';
+        $html = '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
+            . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            . '<title>fakePayment 模拟付款</title><body>'
+            . '<h2>fakePayment 模拟付款</h2><p>发票 #' . $invoice_id . '：'
+            . htmlspecialchars($amount . ' ' . $currency, ENT_QUOTES) . '</p>'
+            . '<p>仅模拟支付，不涉及真实资金。</p>'
+            . '<form method="post" action="' . htmlspecialchars($paymentUrl, ENT_QUOTES) . '">';
         foreach ($fields as $key => $value) {
             $html .= '<input type="hidden" name="' . htmlspecialchars($key, ENT_QUOTES) . '" value="'
                 . htmlspecialchars($value, ENT_QUOTES) . '">';
         }
-        return $html . '<button type="submit">前往 fakePayment 模拟付款</button></form>';
+        $html .= '<button type="submit" name="action" value="confirm">确认模拟付款</button></form></body></html>';
+        // Keep form submission and its response inside the invoice frame.
+        return '<iframe title="fakePayment 模拟付款" sandbox="allow-forms" '
+            . 'style="width:100%;height:280px;border:0" srcdoc="'
+            . htmlspecialchars($html, ENT_QUOTES) . '"></iframe>';
     }
 
-    /** 校验回调并沿用发票支付流程。 / Verify callbacks and use the invoice payment workflow. */
+    /** Verify callbacks and use the invoice payment workflow. */
     public function processTransaction($api_admin, $id, $data, $gateway_id): void
     {
         $post = $data['post'] ?? [];

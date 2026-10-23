@@ -1,4 +1,4 @@
-"""固定上游版本和仿真默认值。 / Pin upstream versions and simulation defaults."""
+"""Pin upstream versions and simulation defaults."""
 FOSSBILLING_VERSION = '0.8.7'
 NAMINGO_EPP_INSTALLER_COMMIT = '018911b170ee5c5542d4f29ce6e60fbb1192e95a'
 DATABASE_PASSWORD = '123456'

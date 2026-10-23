@@ -1,22 +1,23 @@
-# H10：域名购买与 DNS 托管
+# H12: Domain Purchase and DNS Hosting
 
-本示例提供 Registry、FOSSBilling、主从 DNS Hosting 和 FakePayment，完成域名购买、
-模拟付款和 DNS 配置所需的服务部署。场景入口负责主机绑定、端口、账号、TLD 和商品参数；
-服务包负责生成安装和启动操作。
+This example deploys Registry, FOSSBilling, primary/secondary DNS Hosting, and FakePayment
+for domain purchases, simulated payments, and DNS configuration. The scenario defines host
+bindings, ports, accounts, TLDs, and products; the service packages generate installation
+and startup operations.
 
-## 目录
+## Layout
 
 ```text
-H10_domain_name_purchase/
+H12_domain_name_purchase/
 ├── domain_name_purchase.py
 ├── setup.py
 └── output/
 ```
 
-## 启动与初始化
+## Startup and Initialization
 
-准备能够导入 `seedemu` 和 `DomainService` 的 Python 环境，以及可用的 Docker Compose。
-在本示例目录执行：
+Use a Python environment that can import `seedemu` and `DomainService`, with Docker Compose
+available. Run from this example directory:
 
 ```bash
 python domain_name_purchase.py
@@ -27,100 +28,124 @@ cd ..
 python setup.py
 ```
 
-构建入口固定包含全部四项服务。
-`domain_name_purchase.py` 只生成 `output` 中的部署文件；进入该目录后手动构建和启动容器。
-已有镜像层可以命中构建缓存；构建未命中缓存时需要联网下载依赖。
-容器启动时，服务自动完成本地初始化：
+The scenario always includes all four services. `domain_name_purchase.py` only generates
+deployment files in `output`; build and start the containers manually from that directory.
+Existing image layers may use the build cache. Uncached dependency installation requires
+network access.
 
-- FOSSBilling：等待本机数据库和 Web，首次安装，配置站点 URL、EPP/TLD、演示客户及 cron，并移除安装器。
-- Registry：在注册商及预留域名创建后登记托管 NS host；已有记录仅核对，不覆盖。
-- FakePayment：在 FOSSBilling 初始化成功后启用本地支付网关。
+Services initialize locally when their containers start:
 
-`setup.py` 保留启动后的操作：
+- FOSSBilling waits for its database and web server, performs the initial installation,
+  configures the site URL, EPP/TLDs, demo client, and cron, then removes the installer.
+- Registry registers hosting nameserver hosts after creating the registrar and reserved
+  domains. Existing records are checked without being overwritten.
+- FakePayment enables the local payment gateway after FOSSBilling initialization succeeds.
 
-1. 检查完整环境的组件并等待 Registry、FOSSBilling 初始化完成。
-2. 验证 EPP 登录及客户登录。
-3. 等待并核对托管 NS host，读取主从 BIND API 动态凭据，验证连接并配置 DNS Hosting 商品。
-4. 核对支付双方配置、签名密钥、收银台连接及已启用网关，不再写入网关配置。
+`setup.py` performs the remaining operations:
 
-步骤失败会停止后续操作并返回非零退出码。setup 不构建或启动容器，也不再负责本地数据库初始化。
-服务初始化失败时先检查对应容器日志：
-`/var/log/fossbilling-initialize.log`、`/var/log/registry-hosts-example.com.log`、
-`/var/log/fake-payment-initialize.log`。修复后重启对应容器以重跑本地初始化，再运行 setup。
-已有管理员、客户和商品价格会保留；客户密码或 NS 归属不匹配时会报错，不覆盖原数据。
-跨容器验证或 DNS 商品配置失败时可单独重跑 `python setup.py`。这些流程不会自动支付发票或重试客户订单。
+1. Check all required components and wait for Registry and FOSSBilling initialization.
+2. Verify EPP authentication and client login.
+3. Wait for and verify nameserver host records, read generated primary/secondary BIND API
+   credentials, verify connectivity, and configure the DNS Hosting product.
+4. Verify payment configuration, shared signing secrets, checkout connectivity, and the
+   enabled gateway without rewriting gateway configuration.
 
-## 生成参数
+A failed step stops subsequent operations and returns a nonzero exit status. Setup does
+not build or start containers or initialize their local databases. For initialization
+failures, inspect the relevant container logs:
+`/var/log/fossbilling-initialize.log`, `/var/log/registry-hosts-example.com.log`, and
+`/var/log/fake-payment-initialize.log`. Fix the issue, restart the affected container to
+rerun initialization, and run setup again.
 
-Python 入口只生成配置，不执行 Docker 构建或启动。
+Existing administrators, clients, and product prices are preserved. A client password or
+nameserver ownership mismatch raises an error without overwriting data. Cross-container
+verification or product configuration failures can be retried with `python setup.py`.
+These workflows do not pay invoices or retry customer orders automatically.
 
-构建入口和 setup 均支持 `--output 路径`，应使用相同目录。
-构建入口支持 `--platform amd` 或 `--platform arm`；setup 的 `--timeout` 控制 Registry 等待时间，默认 240 秒。
+## Generation Options
 
-## 网站入口
+The Python entry point generates configuration without building or starting Docker.
+Both generation and setup accept `--output PATH`; use the same directory for both.
+Generation supports `--platform amd` and `--platform arm`. Setup's `--timeout` controls
+the Registry wait timeout, which defaults to 240 seconds.
 
-完成启动和初始化后，在宿主机浏览器访问：
+## Web Endpoints
 
-| 入口 | 地址 |
+After startup and initialization, open these URLs in the Docker host's browser:
+
+| Endpoint | URL |
 | --- | --- |
-| FOSSBilling 普通用户 | <http://localhost:18080/> |
-| FOSSBilling 管理员 | <http://localhost:18080/admin> |
-| Registry 管理面板 | <http://localhost:18081/> |
-| FakePayment 健康检查 | <http://localhost:18083/health> |
+| FOSSBilling client portal | <http://localhost:18080/> |
+| FOSSBilling administration | <http://localhost:18080/admin> |
+| Registry control panel | <http://localhost:18081/> |
+| FakePayment health check | <http://localhost:18083/health> |
 
-FOSSBilling 示例管理员为 `admin@example.com`，客户为 `user@example.com`，密码均为 `Aa123456`。
-Registry 示例管理员为 `admin@example.com`，密码为 `123456`。首次初始化参数可在场景入口修改。
+The demo FOSSBilling administrator is `admin@example.com` and the client is
+`user@example.com`, both with password `Aa123456`. The Registry administrator is
+`admin@example.com` with password `123456`. Change initial settings in the scenario entry point.
 
-模拟付款从 FOSSBilling 发票选择 fakePayment 进入；收银台 `/pay` 只接受签名 POST，
-直接在地址栏打开会返回 404。DNS Hosting 在普通用户入口购买和管理，没有独立管理网站。
-浏览器与 agent 聊天界面由 [H11 示例](../H11_browser_agent/README.md) 提供。
+Select fakePayment on a FOSSBilling invoice to confirm a simulated payment and view its
+result inside the invoice page. Refresh the invoice afterward to check payment status.
+The checkout `/pay` endpoint accepts signed POST requests only; opening it in the address
+bar returns 404. DNS Hosting is purchased and managed through the client portal, with no
+separate management website. The [H13 example](../H13_browser_agent/README.md) provides
+the browser and agent chat interface.
 
-端口映射使用服务实例的 `setPortForwarding(host_port)`，传入 `None` 可禁用。修改 FOSSBilling 端口还需同步 `setBrowserHosts()`；
-修改支付入口还需同步 `setBrowserUrls()`。详细配置见 [服务说明](../../services/DomainService/README.md)。
+Configure host ports with `setPortForwarding(host_port)`; pass `None` to disable forwarding.
+FOSSBilling derives its local URL from the forwarded port, preserving localhost in links
+and redirects for localhost requests. Update `setBrowserUrls()` when changing payment
+endpoints. See the [service documentation](../../services/DomainService/README.md).
 
-## DNS 托管和解析
+## DNS Hosting and Resolution
 
-默认销售 `.com`、`.net`；完整场景预留 `google.com`、`twitter.com`、`example.com`。
-托管名称服务器为 `ns1.example.com`、`ns2.example.com`，地址分别为 `10.170.0.71`、`10.170.0.72`。
-主从 BIND API 监听内部 7650 端口，不映射宿主机端口。
+The default products cover `.com` and `.net`; the scenario reserves `google.com`,
+`twitter.com`, and `example.com`. Hosting nameservers are `ns1.example.com` and
+`ns2.example.com`, at `10.170.0.71` and `10.170.0.72`. Their BIND APIs listen on internal
+port 7650 without host port forwarding.
 
-客户域名需要分别完成注册、NS 设置、DNS Hosting 开通及 A/AAAA 等记录配置。
-Registry 发布器把 NS/glue 更新到父区，每轮完成后等待 30 秒；递归缓存可能继续保留旧结果。
-可分别查询权威 DNS 和递归 DNS，以区分记录配置与委派、缓存问题：
+Customer domains require registration, nameserver configuration, DNS Hosting activation,
+and records such as A/AAAA separately. The Registry publisher updates parent-zone NS/glue
+records, waiting 30 seconds after each cycle. Recursive caches may retain older results.
+Query authoritative and recursive DNS separately to distinguish record configuration
+from delegation or cache problems:
 
 ```bash
 dig @10.170.0.71 www.your-domain.com A +norecurse
 dig @10.153.0.53 www.your-domain.com A
 ```
 
-以上命令在能访问仿真网络的容器中执行，请替换为实际域名。
-setup 成功不等于购买或解析成功，需分别核对发票、订单、Registry 注册、父区委派和权威记录。
+Run these commands in a container with access to the simulation network and substitute
+the actual domain. Successful setup does not prove purchase or resolution success:
+check invoices, orders, Registry registration, parent delegation, and authoritative records.
 
-## 容器定位与商品选择
+## Container Selection and Products
 
-setup 使用以下固定 Compose 服务名定位容器，可通过参数覆盖：
+Setup locates containers by these Compose service names; override them with the listed options:
 
-| 服务 | Compose 服务名 | 自定义参数 |
+| Service | Compose service | Override |
 | --- | --- | --- |
 | Registry | `hnode_151_host_1` | `--registry-service` |
 | FOSSBilling | `hnode_150_host_1` | `--fossbilling-service` |
-| 主 DNS | `hnode_170_host_0` | `--primary-dns-service` |
-| 从 DNS | `hnode_170_host_1` | `--secondary-dns-service` |
-| 收银台 | `hnode_160_host_1` | `--payment-service` |
+| Primary DNS | `hnode_170_host_0` | `--primary-dns-service` |
+| Secondary DNS | `hnode_170_host_1` | `--secondary-dns-service` |
+| Checkout | `hnode_160_host_1` | `--payment-service` |
 
-修改绑定节点后需同步指定服务名。存在多个 DNS 商品时使用 `--dns-product-id ID` 选择目标。
-已有商品保留价格，无商品时创建免费仿真托管商品。
+Update service selections when changing host bindings. Use `--dns-product-id ID` when
+multiple DNS products exist. Existing prices are preserved; if no product exists, setup
+creates a free simulation hosting product.
 
-## 清理与数据
+## Cleanup and Data
 
 ```bash
 docker compose -f output/docker-compose.yml down --remove-orphans --volumes
 ```
 
-上述命令删除同一项目的容器、
-网络和项目管理的数据卷，包括遗留容器；保留镜像、构建缓存和生成文件。
-使用自定义输出目录时，将命令中的 `output/docker-compose.yml` 替换为对应路径。
-外部卷及宿主机绑定挂载目录不会删除。容器未持久化的数据会随容器删除而丢失。
+This removes the project's containers, networks, and managed volumes, including orphaned
+containers. Images, build caches, and generated files remain. For a custom output directory,
+replace `output/docker-compose.yml` with the corresponding path. External volumes and host
+bind-mount directories are not removed. Nonpersistent container data is lost on removal.
 
-H10 和 H11 默认都使用 Compose 项目 `output`，业务端口也相同，应选择一个部署。
-构建入口不会自动清理数据；切换部署前请确认需要保留的数据。脚本仅透传底层命令输出及必要错误信息。
+H12 and H13 both default to the Compose project `output` and use the same application ports;
+deploy one at a time. Generation does not clean data automatically. Check which data must
+be preserved before switching deployments. Scripts forward underlying command output and
+necessary error messages.

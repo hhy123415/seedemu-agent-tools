@@ -1,5 +1,5 @@
 <?php
-// 应用初始化操作。 / Application initialization operation.
+// Application initialization operation.
 require '/var/www/fossbilling/load.php';
 require '/var/www/fossbilling/library/Registrar/Adapter/Namingo.php';
 try {

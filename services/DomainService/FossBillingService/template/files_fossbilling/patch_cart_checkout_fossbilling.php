@@ -1,9 +1,10 @@
 <?php
-/** 将开通延后到提交之后。 / Defer activation until commit so legacy connections can read orders. */
+/** Defer activation until commit so legacy connections can read orders. */
 declare(strict_types=1);
 $path = $argv[1] ?? '/var/www/fossbilling/modules/Cart/Service.php';
 $source = file_get_contents($path);
-if (str_contains($source, '// B02：事务提交后通过旧模型开通订单。')) { exit(0); }
+if (str_contains($source, '// Activate orders through legacy models after the transaction commits.')
+    || str_contains($source, '// B02：事务提交后通过旧模型开通订单。')) { exit(0); }
 $replace = function (string $before, string $after) use (&$source): void {
     if (substr_count($source, $before) !== 1) {
         throw new RuntimeException('结账代码不匹配，拒绝应用补丁');
@@ -17,7 +18,6 @@ $end = strpos($source, "\n                return [\n                    \$master
 if ($start === false || $end === false) { throw new RuntimeException('找不到结账开通代码'); }
 $old = substr($source, $start, $end - $start);
 $new = <<<'CODE'
-                // 事务内只记录待开通 ID，不调用外部服务或旧模型连接。
                 // Collect activation IDs in the transaction without calling external services or legacy connections.
                 $orderService = $this->di['mod_service']('Order');
                 $ids = [];
@@ -47,9 +47,7 @@ $after = <<<'CODE'
             throw $e;
         }
 
-        // B02：事务提交后通过旧模型开通订单。
         // Activate orders through legacy models after the transaction commits.
-        // 开通失败不回滚已提交的结账，也不触发优惠券补偿。
         // Activation failures do not roll back committed checkout or compensate coupons.
         $orderService = $this->di['mod_service']('Order');
         foreach (array_unique($activationIds) as $id) {

@@ -1,4 +1,4 @@
-"""按名称读取 FOSSBilling 模板。 / Load FOSSBilling templates by name."""
+"""Load FOSSBilling templates by name."""
 from pathlib import Path
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent / 'files_fossbilling'

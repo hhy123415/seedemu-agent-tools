@@ -1,8 +1,8 @@
 <?php
-/** Seed the hosted nameservers using the Registry panel's host record structure. / 按 Registry 面板的数据结构登记托管名称服务器。 */
+/** Seed the hosted nameservers using the Registry panel's host record structure. */
 declare(strict_types=1);
 
-/** Both hosts succeed together; existing records are checked, never overwritten. / 所有 host 在同一事务中处理，已有记录只核对、不覆盖。 */
+/** Both hosts succeed together; existing records are checked, never overwritten. */
 function initializeHostedNameservers(PDO $db, array $hosts, string $registrar, bool $checkOnly): array
 {
     $parent = getenv('B02C_PARENT');
@@ -40,7 +40,7 @@ function initializeHostedNameservers(PDO $db, array $hosts, string $registrar, b
             if (!preg_match('/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.' . preg_quote($parent, '/') . '$/D', $name)) {
                 throw new RuntimeException("非法的托管 host 名称：$name");
             }
-            // Matches HostsController::createHost: IPv4 syntax, including private addresses. / 与前端保持一致，允许合法的私有 IPv4 地址。
+            // Matches HostsController::createHost: IPv4 syntax, including private addresses.
             if (!filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                 throw new RuntimeException("$name 的 IPv4 地址无效：$address");
             }

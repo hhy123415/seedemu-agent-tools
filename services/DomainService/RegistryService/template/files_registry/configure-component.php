@@ -1,5 +1,5 @@
 <?php
-// 从上游默认值生成组件配置，实例参数覆盖默认值。 / Generate component configuration by overriding upstream defaults with instance settings.
+// Generate component configuration by overriding upstream defaults with instance settings.
 $config = require '/opt/registry/%s/config.php.dist';
 $config = array_replace($config, [
     'db_host' => '127.0.0.1',

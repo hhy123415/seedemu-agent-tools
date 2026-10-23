@@ -1,5 +1,5 @@
 <?php
-/** 修正固定上游提交的 SOA 类型：存储使用字符串，DNS 库接口要求整数。 / Fix SOA types in the pinned upstream version: stored strings must be integers for the DNS library. */
+/** Fix SOA types in the pinned upstream version: stored strings must be integers for the DNS library. */
 declare(strict_types=1);
 $changes = [
     'start_bind9_api.php' => ['            $serialNumber,', '            (int) $serialNumber,'],

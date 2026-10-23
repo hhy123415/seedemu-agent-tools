@@ -1,5 +1,5 @@
 <?php
-// 启用网关，不创建付款或订单。 / Enable the gateway without creating payments or orders.
+// Enable the gateway without creating payments or orders.
 require '/var/www/fossbilling/load.php';
 try {
 $checkOnly = getenv('FAKE_PAYMENT_CHECK_ONLY') === '1';

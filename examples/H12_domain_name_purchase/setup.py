@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""等待服务自动初始化，验证运行状态并配置 DNS Hosting 商品。
-Wait for automatic service initialization, verify runtime state, and configure DNS Hosting products.
+"""Wait for automatic service initialization, verify runtime state, and configure DNS Hosting products.
 """
 import argparse
 from pathlib import Path
@@ -14,7 +13,6 @@ SETUP = SERVICES / 'FossBillingService' / 'setup_fossbilling.py'
 PAYMENT_SETUP = SERVICES / 'FakePaymentService' / 'setup_fake_payment.py'
 DNS_SETUP = SERVICES / 'DnsHostingService' / 'setup_dns_hosting.py'
 
-# 检查数据库、管理员、EPP 和面板，不输出配置中的凭据。
 # Check the database, administrator, EPP, and panel without printing configuration credentials.
 REGISTRY_READY = r'''
 try {
@@ -38,13 +36,13 @@ try {
 
 
 def run(command, cwd, capture=False, check=True, timeout=None):
-    """透传业务命令输出并保留失败退出码；内部探测按需捕获。 / Pass through operation output and exit codes; capture internal probes as needed."""
+    """Pass through operation output and exit codes; capture internal probes as needed."""
     return subprocess.run(command, cwd=cwd, text=True, capture_output=capture,
                           check=check, timeout=timeout)
 
 
 def container_id(output, service):
-    """通过 Compose 服务名查找实际容器，避免依赖显示名或 IP。 / Resolve the actual container by Compose service rather than display name or IP."""
+    """Resolve the actual container by Compose service rather than display name or IP."""
     result = run(['docker', 'compose', 'ps', '-q', service], output, capture=True, timeout=30)
     ids = result.stdout.split()
     if len(ids) != 1:
@@ -53,7 +51,7 @@ def container_id(output, service):
 
 
 def require_component(output, container, path):
-    """初始化前检查场景组件，避免旧容器被当作完整部署。 / Check scenario components before setup to reject incomplete older deployments."""
+    """Check scenario components before setup to reject incomplete older deployments."""
     result = run(['docker', 'exec', container, 'test', '-f', path], output,
                  capture=True, check=False, timeout=30)
     if result.returncode:
@@ -61,7 +59,7 @@ def require_component(output, container, path):
 
 
 def wait_for_registry(output, container, timeout):
-    """有界等待 Registry 自动初始化；不重复执行数据库导入。 / Wait with a deadline for automatic Registry initialization without reimporting its database."""
+    """Wait with a deadline for automatic Registry initialization without reimporting its database."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -76,7 +74,7 @@ def wait_for_registry(output, container, timeout):
 
 
 def main(argv=None):
-    """检查已启动容器并执行 setup。 / Check running containers and perform setup."""
+    """Check running containers and perform setup."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=HERE / 'output')
     parser.add_argument('--registry-service', default='hnode_151_host_1')
@@ -97,12 +95,12 @@ def main(argv=None):
             raise RuntimeError(f'Missing {output / "docker-compose.yml"}; generate the scenario first')
         registry = container_id(output, args.registry_service)
         registrar = container_id(output, args.fossbilling_service)
-        require_component(output, registrar, '/opt/b02c/dns-hosting.json')
+        require_component(output, registrar, '/opt/dns-hosting/dns-hosting.json')
         primary = container_id(output, args.primary_dns_service)
         secondary = container_id(output, args.secondary_dns_service)
-        require_component(output, registrar, '/opt/b02d/payment-config.json')
+        require_component(output, registrar, '/opt/fake-payment/payment-config.json')
         payment = container_id(output, args.payment_service)
-        require_component(output, payment, '/opt/b02d/payment-config.json')
+        require_component(output, payment, '/opt/fake-payment/payment-config.json')
         wait_for_registry(output, registry, args.timeout)
         run([sys.executable, str(SETUP), '--container', registrar], output)
         command = [sys.executable, str(DNS_SETUP), '--container', registrar,

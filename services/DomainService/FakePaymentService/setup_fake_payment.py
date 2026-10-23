@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""验证收银台连接及已自动启用的支付网关。 / Verify checkout connectivity and the automatically enabled gateway."""
+"""Verify checkout connectivity and the automatically enabled gateway."""
 import argparse
 import json
 import subprocess
@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 
 def execute(container, command, payload=None):
-    """执行容器命令，不将输入或敏感输出写入错误信息。 / Execute a container command without exposing input or sensitive output in errors."""
+    """Execute a container command without exposing input or sensitive output in errors."""
     result = subprocess.run(['docker', 'exec', '-i', container, *command], input=payload,
                             capture_output=True, text=True, timeout=30)
     if result.returncode:
@@ -20,12 +20,12 @@ def execute(container, command, payload=None):
 
 
 def setup(billing, payment, timeout):
-    """校验配置、健康状态及已启用网关；不创建或支付发票。 / Validate configuration, health, and the enabled gateway; do not create or pay invoices."""
-    secret = execute(billing, ['cat', '/opt/b02d/payment-secret']).strip()
-    if not secret or secret != execute(payment, ['cat', '/opt/b02d/secret']).strip():
+    """Validate configuration, health, and the enabled gateway; do not create or pay invoices."""
+    secret = execute(billing, ['cat', '/opt/fake-payment/payment-secret']).strip()
+    if not secret or secret != execute(payment, ['cat', '/opt/fake-payment/secret']).strip():
         raise RuntimeError('Checkout and registrar signing secrets do not match')
-    config = json.loads(execute(billing, ['cat', '/opt/b02d/payment-config.json']))
-    if config != json.loads(execute(payment, ['cat', '/opt/b02d/payment-config.json'])):
+    config = json.loads(execute(billing, ['cat', '/opt/fake-payment/payment-config.json']))
+    if config != json.loads(execute(payment, ['cat', '/opt/fake-payment/payment-config.json'])):
         raise RuntimeError('Checkout and registrar payment configurations do not match')
     url = urlsplit(config['payment_url'])
     health = f'{url.scheme}://{url.netloc}/health'
@@ -39,7 +39,7 @@ def setup(billing, payment, timeout):
         if time.monotonic() >= deadline:
             raise RuntimeError('Checkout health check timed out from registrar')
         time.sleep(min(2, max(0, deadline - time.monotonic())))
-    # 网关由服务启动脚本启用，此处只核对运行状态。 / Startup enables the gateway; only verify its state here.
+    # Startup enables the gateway; only verify its state here.
     deadline = time.monotonic() + timeout
     while True:
         status = execute(billing, ['sh', '-c', 'if [ -f /run/fake-payment-initialization.failed ]; then echo failed; elif [ -f /run/fake-payment-initialized ]; then echo ready; fi']).strip()
@@ -48,14 +48,14 @@ def setup(billing, payment, timeout):
         if status == 'failed' or time.monotonic() >= deadline:
             raise RuntimeError('Gateway initialization failed or timed out; inspect /var/log/fake-payment-initialize.log')
         time.sleep(min(2, max(0, deadline - time.monotonic())))
-    output = execute(billing, ['env', 'FAKE_PAYMENT_CHECK_ONLY=1', 'php8.5', '/opt/b02d/setup-gateway.php'])
+    output = execute(billing, ['env', 'FAKE_PAYMENT_CHECK_ONLY=1', 'php8.5', '/opt/fake-payment/setup-gateway.php'])
     if 'PASS' not in output:
         raise RuntimeError('Gateway verification did not confirm success')
     sys.stdout.write(output)
 
 
 def main(argv=None):
-    """解析容器参数并报告初始化结果。 / Parse container arguments and report initialization results."""
+    """Parse container arguments and report initialization results."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--container', required=True)
     parser.add_argument('--payment-container', required=True)
