@@ -24,7 +24,7 @@ def registrar_find(filter=None):
 
 
 def hosted_dns_find(filter=None):
-    """返回本示例的预配置入口；不扫描网络，也不声明服务在线。 / Return configured example endpoints without scanning or asserting availability."""
+    """Return configured example endpoints without scanning or asserting availability."""
     service = {
         "service_id": "hosted_dns",
         "provider": "fossbilling-servicedns",

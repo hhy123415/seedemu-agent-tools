@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""初始化完整域名服务并验证同容器浏览器与 agent。 / Initialize domain services and verify the colocated browser and agent."""
+"""Initialize domain services and verify the colocated browser and agent."""
 import argparse
 from pathlib import Path
 import subprocess
@@ -8,7 +8,6 @@ import sys
 HERE = Path(__file__).resolve().parent
 
 
-# 实际连接 Playwright，验证浏览器而不执行购买任务。
 # Connect to Playwright to verify the browser without performing purchases.
 CHECK = """
 import asyncio
@@ -34,7 +33,7 @@ asyncio.run(check())
 
 
 def main(argv=None):
-    """复用 H12 初始化流程，再验证浏览器连接。 / Reuse H12 setup and then verify browser connectivity."""
+    """Reuse H12 setup and then verify browser connectivity."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=HERE / 'output')
     parser.add_argument('--dns-product-id', type=int)

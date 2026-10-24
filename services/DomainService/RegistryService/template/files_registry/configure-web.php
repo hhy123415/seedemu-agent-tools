@@ -1,5 +1,5 @@
 <?php
-// 根据容器地址和实例参数生成面板配置。 / Generate panel settings from the container address and instance parameters.
+// Generate panel settings from the container address and instance parameters.
 $path = '/opt/registry/cp/';
 $ip = explode(' ', trim(shell_exec('hostname -I')))[0];
 $env = file_get_contents($path . 'env-sample');
@@ -14,7 +14,6 @@ $settings = [
     'TEST_TLDS' => '',
 ];
 foreach ($settings as $key => $value) {
-    // 使用带引号的 dotenv 值，保留密码中的特殊字符。
     // Quote the dotenv value to preserve special characters in the password.
     if ($key === 'DB_PASSWORD') {
         $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -24,7 +23,6 @@ foreach ($settings as $key => $value) {
         function () use ($key, $value) { return $key . '=' . $value; }, $env);
 }
 file_put_contents($path . '.env', $env);
-// 本地示例通过端口映射提供 HTTP 管理面板。
 // The local example exposes the HTTP panel through port forwarding.
 $bootstrapPath = $path . 'bootstrap/app.php';
 $bootstrap = file_get_contents($bootstrapPath);

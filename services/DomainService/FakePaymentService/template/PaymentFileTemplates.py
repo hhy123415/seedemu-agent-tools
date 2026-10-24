@@ -1,4 +1,4 @@
-"""加载模拟支付模板。 / Load simulated payment templates."""
+"""Load simulated payment templates."""
 from pathlib import Path
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent / 'files_payment'

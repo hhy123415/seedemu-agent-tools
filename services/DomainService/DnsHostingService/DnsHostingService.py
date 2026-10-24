@@ -1,29 +1,33 @@
-"""封装主从 BIND API 与 FOSSBilling DNS Hosting 集成。 / Encapsulate primary/secondary BIND APIs and FOSSBilling DNS Hosting integration."""
-import re
+"""Native DNS subclass with hosting APIs, FOSSBilling integration, and dynamic update authorization.
+"""
+import base64
 import json
+import re
+import secrets
 import shlex
+from typing import List
 
-from seedemu.core import Server, Service
+from seedemu.core import Hook
+from seedemu.services import DomainNameService, DomainNameServer
+from seedemu.mergers.DefaultDomainNameServiceMerger import DefaultDomainNameServiceMerger
 from ..FossBillingService import FossBillingServer
 from .dns_install import install_nameserver, install_extension
 from .template import DnsFileTemplates
 
 
-class DnsHostingServer(Server):
-    """一个实例管理一对已有 DNS 节点及一个注册商的托管产品。 / An instance manages two existing DNS nodes and one registrar's hosting product."""
+class _DnsHostingPair:
+    """An instance manages two existing DNS nodes and one registrar's hosting product."""
 
     def __init__(self):
-        """设置默认虚拟节点和托管域名。 / Set default virtual nodes and the hosting domain."""
-        super().__init__()
+        """Set default virtual nodes and the hosting domain."""
         self._primary = 'hosted-dns-primary'
         self._secondary = 'hosted-dns-secondary'
         self._domain = 'example.com'
         self._registrar = 'fossbilling'
         self._nodes = None
-        self.appendClassName('DnsHostingService')
 
     def setNameServers(self, primary, secondary, domain='example.com'):
-        """选择 DNS 虚拟节点及其已有静态区域。 / Select DNS virtual nodes and their existing static zone."""
+        """Select DNS virtual nodes and their existing static zone."""
         if any(not isinstance(value, str) or not value for value in (primary, secondary, domain)) or primary == secondary:
             raise ValueError('Distinct primary and secondary DNS virtual nodes are required')
         domain = domain.lower().rstrip('.')
@@ -34,14 +38,14 @@ class DnsHostingServer(Server):
         return self
 
     def setRegistrar(self, virtual_node):
-        """选择已安装的 FOSSBilling 注册商实例。 / Select an installed FOSSBilling registrar instance."""
+        """Select an installed FOSSBilling registrar instance."""
         if not isinstance(virtual_node, str) or not virtual_node:
             raise ValueError('A registrar virtual node is required')
         self._registrar = virtual_node
         return self
 
-    def configure(self, emulator, node):
-        """解析主从及注册商绑定，拒绝冲突的区域或主机。 / Resolve DNS and registrar bindings and reject conflicting zones or hosts."""
+    def configure(self, emulator):
+        """Resolve DNS and registrar bindings and reject conflicting zones or hosts."""
         dns = emulator.getLayer('DomainNameService')
         for vnode in (self._primary, self._secondary):
             if vnode not in dns.getPendingTargets():
@@ -55,8 +59,8 @@ class DnsHostingServer(Server):
         if not isinstance(registrar, FossBillingServer):
             raise ValueError('The registrar must use FossBillingService')
         registrar_node = emulator.getBindingFor(self._registrar)
-        if node is not primary or primary is secondary or registrar_node in (primary, secondary):
-            raise ValueError('Bind DNS hosting to the primary DNS host; primary, secondary, and registrar must be distinct')
+        if primary is secondary or registrar_node in (primary, secondary):
+            raise ValueError('Primary, secondary, and registrar must be distinct')
         if self._domain not in registrar.getReservedDomains():
             raise ValueError('Reserve the hosting domain on the registrar before rendering')
         primary_ip = str(primary.getInterfaces()[0].getAddress())
@@ -77,8 +81,8 @@ class DnsHostingServer(Server):
             'soaemail': 'hostmaster@' + self._domain,
         }
 
-    def install(self, node):
-        """安装主从 API 和扩展，保留 DomainNameService 的区域管理。 / Install both APIs and the extension while retaining DomainNameService zone management."""
+    def install(self):
+        """Install both APIs and the extension while retaining DomainNameService zone management."""
         if self._nodes is None:
             raise RuntimeError('Configure DNS hosting through emulator.render() first')
         primary, secondary, registrar = self._nodes
@@ -87,9 +91,9 @@ class DnsHostingServer(Server):
             install_nameserver(host, role, self._settings[role], self._settings['secondary'],
                                str(registrar.getInterfaces()[0].getAddress()), self._domain)
         install_extension(registrar, self._settings)
-        # Registry 已完成本地注册商及父域名初始化，再登记 NS。 / Register NS after local registrar and parent-domain initialization.
+        # Register NS after local registrar and parent-domain initialization.
         registry = self._registry_node
-        directory = '/opt/b02c/hosts-' + self._domain
+        directory = '/opt/dns-hosting/hosts-' + self._domain
         registry.setFile(directory + '.php', DnsFileTemplates['setup-hosts-registry.php'])
         environment = {
             'B02C_HOSTS': json.dumps([[self._settings['ns1'], self._settings['primary']],
@@ -108,40 +112,237 @@ class DnsHostingServer(Server):
         registry.appendStartCommand('sh ' + directory + '.sh > /var/log/registry-hosts-'
                                     + self._domain + '.log 2>&1')
 
-    def print(self, indent):
-        """返回实例说明。 / Return the instance description."""
-        return ' ' * indent + 'DNS Hosting server pair\n'
+
+class DnsUpdateAuthorization:
+    """    DNS update credentials populated by DNS rendering and read by publishers.
+    """
+
+    def __init__(self, zones):
+        self.__zones = tuple(zones)
+        self.__credentials = {}
+
+    def getZones(self):
+        """Return authorized zone names."""
+        return self.__zones
+
+    def getCredentials(self, zone):
+        """Read the address and TSIG key after rendering."""
+        if zone not in self.__credentials:
+            raise RuntimeError('DNS authorization is not ready; render DomainNameService first')
+        return self.__credentials[zone]
+
+    def _setCredentials(self, zone, address, key):
+        """Populate credentials from the DNS service."""
+        self.__credentials[zone] = (address, key)
 
 
-class DnsHostingService(Service):
-    """在已绑定的 DNS 节点上增加托管 API。 / Add hosting APIs to already-bound DNS nodes."""
+class DnsHostingService(DomainNameService):
+    """    Extend native DNS with hosting APIs and publisher-independent update authorizations.
+    """
 
-    def __init__(self):
-        """声明 DNS、注册商和 Registry 依赖。 / Declare DNS, registrar, and Registry dependencies."""
-        super().__init__()
-        for name in ('Base', 'Routing', 'DomainNameService', 'FossBillingService'):
-            self.addDependency(name, False, False)
+    def __init__(self, autoNameServer=True):
+        """Preserve base initialization and track authorizations."""
+        super().__init__(autoNameServer)
+        self._update_authorizations = []
+        self._hosting = []
+
+    def addHosting(self, primary, secondary, domain='example.com'):
+        """Add hosting to existing DNS nodes without another virtual node."""
+        hosting = _DnsHostingPair().setNameServers(primary, secondary, domain)
+        self._hosting.append(hosting)
+        return hosting
 
     def configure(self, emulator):
-        """配置每一对节点，每个注册商只绑定一对托管 DNS。 / Configure each pair with one hosting pair per registrar."""
-        registrars, dns_nodes = set(), set()
-        for vnode, server in self._pending_targets.items():
-            server.configure(emulator, emulator.getBindingFor(vnode))
-            pair = server._nodes[:2]
-            if server._registrar in registrars or any(id(node) in dns_nodes for node in pair):
-                raise ValueError('DNS pairs and registrar hosting configurations must not overlap')
-            registrars.add(server._registrar)
-            dns_nodes.update(id(node) for node in pair)
+        """Configure native DNS and defer hosting installation until the registrar is rendered."""
         super().configure(emulator)
+        if self._hosting:
+            emulator.getLayer('FossBillingService')
+            emulator.addHook(_DnsHostingHook(self))
 
-    def _createServer(self):
-        """创建托管 DNS 实例。 / Create a DNS hosting instance."""
-        return DnsHostingServer()
+    def getZoneServerNames(self, domain: str) -> List[str]:
+        """!
+        @brief Get the names of servers hosting the given zone. This only works
+        if the server was installed by using the "installByName" call.
+
+        @param domain domain.
+
+        @returns list of tuple of (node name, asn)
+        """
+        info = []
+        targets = self.getPendingTargets()
+
+        for (vnode, sobj) in targets.items():
+            server: DomainNameServer = sobj
+
+            hit = False
+
+            for zone in server.getZones():
+                if zone == domain:
+                    info.append(vnode)
+                    hit = True
+                    break
+            
+            if hit: continue
+        
+        return info
+
+    def authorizeZoneUpdates(self, zones):
+        """        Create a publisher-independent authorization for NS/A/AAAA updates below
+        each zone, protecting its apex and name servers. Pass zone names only; DNS
+        discovers their servers and primary from its own configuration. Returns credentials
+        resolved during DNS rendering; consumers must render after this layer.
+        """
+        normalized, servers, hosted = {}, {}, {}
+        for value in zones:
+            zone_name = value.removesuffix('.').lower()
+            if (len(zone_name) > 253 or not all(re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', label)
+                                              for label in zone_name.split('.'))):
+                raise ValueError(f'Invalid zone: {value}')
+            names = self.getZoneServerNames(zone_name + '.')
+            if not names:
+                raise ValueError(f'No DNS servers host {zone_name}.')
+            normalized[zone_name] = tuple(names)
+            for name in names:
+                server = self._pending_targets[name]
+                if server.getIncludePath(zone_name + '.') is not None:
+                    raise ValueError(f'{name} already has a custom include for {zone_name}.')
+                servers[name] = server
+                hosted.setdefault(name, set()).add(zone_name + '.')
+        for name, server in servers.items():
+            if {zone.rstrip('.').lower() + '.' for zone in server.getZones()} != hosted[name]:
+                raise ValueError(f'All zones hosted by {name} must be included in zones')
+        # Mutate includes only after complete validation.
+        for zone_name, names in normalized.items():
+            for name in names:
+                servers[name].setInclude(zone_name + '.', f'/etc/bind/update-{zone_name}.conf')
+        authorization = DnsUpdateAuthorization(zone_name + '.' for zone_name in normalized)
+        self._update_authorizations.append((authorization, normalized))
+        return authorization
+
+    def __renderUpdateAuthorizations(self, emulator):
+        """Render DNS authorization and populate credentials."""
+        def new_key(identity):
+            secret = base64.b64encode(secrets.token_bytes(32)).decode('ascii')
+            return f'key "{identity}" {{ algorithm hmac-sha256; secret "{secret}"; }};\n'
+
+        for authorization, zones in self._update_authorizations:
+            for zone_name, vnodes in zones.items():
+                zone = zone_name + '.'
+                nodes = [emulator.getServerByVirtualNodeName(name).getNode() for name in vnodes]
+                if len(nodes) > 1:
+                    master_ips = self.getMasterIp().get(zone, [])
+                    primaries = [node for node in nodes
+                                 if str(node.getInterfaces()[0].getAddress()) in master_ips]
+                    if len(primaries) != 1:
+                        raise ValueError(f'{zone} requires exactly one configured DNS primary')
+                    nodes = primaries + [node for node in nodes if node is not primaries[0]]
+                primary = nodes[0]
+                primary_ip = str(primary.getInterfaces()[0].getAddress())
+                publish_id, transfer_id = f'{zone_name}-publisher', f'{zone_name}-zone-transfer'
+                bind_path = f'/etc/bind/keys/{zone_name}-publisher.key'
+                transfer_path = f'/etc/bind/keys/{zone_name}-transfer.key'
+                zone_path = f'/etc/bind/zones/{zone}'
+                config_path = f'/etc/bind/update-{zone_name}.conf'
+                publish_key, transfer_key = new_key(publish_id), new_key(transfer_id)
+                records = self.getZone(zone).getRecords()
+
+                # Protect the apex and name server records, including explicit TTL and IN fields.
+                protected = {zone}
+                for record in records:
+                    fields = record.split(';', 1)[0].split()
+                    upper = [field.upper() for field in fields]
+                    if fields and fields[0].lower() in ('@', zone) and 'NS' in upper:
+                        index = upper.index('NS')
+                        if index + 1 < len(fields):
+                            name = fields[index + 1].lower()
+                            protected.add(name if name.endswith('.') else name + '.' + zone)
+                policy = '\n'.join(f'    deny {publish_id} name {name} ANY;' for name in sorted(protected))
+                policy += f'\n    grant {publish_id} subdomain {zone} NS A AAAA;'
+                transfer = '    allow-transfer { none; };\n    notify no;'
+                if len(nodes) > 1:
+                    secondary_ips = [str(node.getInterfaces()[0].getAddress()) for node in nodes[1:]]
+                    notifications = ' '.join(f'{address} key "{transfer_id}";' for address in secondary_ips)
+                    transfer = (f'    allow-transfer {{ key "{transfer_id}"; }};\n'
+                                '    notify explicit;\n'
+                                f'    also-notify {{ {notifications} }};')
+                primary.setFile(config_path, f'''include "{bind_path}";
+include "{transfer_path}";
+zone "{zone}" {{
+    type master;
+    file "{zone_path}";
+    update-policy {{
+{policy}
+    }};
+{transfer}
+}};
+''')
+                for secondary in nodes[1:]:
+                    secondary.setFile(config_path, f'''include "{transfer_path}";
+zone "{zone}" {{
+    type slave;
+    file "{zone_path}";
+    masters {{ {primary_ip} key "{transfer_id}"; }};
+    allow-notify {{ key "{transfer_id}"; }};
+    allow-transfer {{ none; }};
+    allow-update-forwarding {{ none; }};
+}};
+''')
+                primary.setFile(bind_path, publish_key)
+                for node in nodes:
+                    # Custom includes skip default zone files, so write them explicitly.
+                    node.setFile(zone_path, '\n'.join(records) + '\n')
+                    options = node.getFile('/etc/bind/named.conf.options')
+                    options.setContent(options.get()[1].replace('allow-update { any; };', 'allow-update { none; };'))
+                    node.setFile(transfer_path, transfer_key)
+                    permissions = ('chown -R root:bind /etc/bind/keys && '
+                                   'chmod 750 /etc/bind/keys && chmod 640 /etc/bind/keys/*.key')
+                    node.addBuildCommandAtEnd(permissions)
+                    node.insertStartCommand(0, permissions)
+                authorization._setCredentials(zone, primary_ip, publish_key)
+
+    def render(self, emulator):
+        """Render native DNS before update authorizations and hosting configuration."""
+        super().render(emulator)
+        self.__renderUpdateAuthorizations(emulator)
+        registrars, dns_nodes = set(), set()
+        for hosting in self._hosting:
+            hosting.configure(emulator)
+            pair = hosting._nodes[:2]
+            if hosting._registrar in registrars or any(id(node) in dns_nodes for node in pair):
+                raise ValueError('DNS pairs and registrar hosting configurations must not overlap')
+            registrars.add(hosting._registrar)
+            dns_nodes.update(id(node) for node in pair)
+
+
+class DnsHostingServiceMerger(DefaultDomainNameServiceMerger):
+    """Merge native DNS while preserving hosting and update authorizations."""
+
+    def _createService(self):
+        """Create the subclass for the native merge workflow."""
+        return DnsHostingService()
+
+    def doMerge(self, objectA, objectB):
+        """Keep authorization objects referenced by publishers such as Registry."""
+        merged = super().doMerge(objectA, objectB)
+        for service in (objectA, objectB):
+            if isinstance(service, DnsHostingService):
+                merged._hosting.extend(service._hosting)
+                merged._update_authorizations.extend(service._update_authorizations)
+        return merged
+
+
+class _DnsHostingHook(Hook):
+    """Append hosting installation after the registrar without a DNS/Registry dependency cycle."""
+
+    def __init__(self, dns):
+        self._dns = dns
 
     def getName(self):
-        """返回服务名称。 / Return the service name."""
-        return 'DnsHostingService'
+        return 'DnsHosting'
 
-    def print(self, indent):
-        """返回服务层说明。 / Return the service layer description."""
-        return ' ' * indent + 'DnsHostingServiceLayer\n'
+    def getTargetLayer(self):
+        return 'FossBillingService'
+
+    def postrender(self, emulator):
+        for hosting in self._dns._hosting:
+            hosting.install()

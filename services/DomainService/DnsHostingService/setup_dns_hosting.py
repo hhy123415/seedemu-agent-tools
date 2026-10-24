@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""核对托管 NS host 并配置 DNS Hosting 产品，不修改客户订单。 / Verify hosted NS objects and configure the DNS Hosting product without modifying customer orders."""
+"""Verify hosted NS objects and configure the DNS Hosting product without modifying customer orders."""
 import argparse
 import ipaddress
 import json
@@ -14,15 +14,15 @@ else:
 
 
 def docker(container, *command, input_text=None, check=True):
-    """捕获容器输出，凭据只在内存和标准输入中传递。 / Capture container output and pass credentials only in memory and stdin."""
+    """Capture container output and pass credentials only in memory and stdin."""
     return subprocess.run(['docker', 'exec', *(['-i'] if input_text is not None else []), container, *command],
                           input=input_text, text=True, capture_output=True, check=check, timeout=180)
 
 
 def read_credentials(container, role):
-    """等待 API 本机凭据生成，不打印账号密码。 / Wait for local API credentials without printing them."""
+    """Wait for local API credentials without printing them."""
     for attempt in range(60):
-        result = docker(container, 'cat', '/opt/b02c/bind-api-credentials.json', check=False)
+        result = docker(container, 'cat', '/opt/dns-hosting/bind-api-credentials.json', check=False)
         if result.returncode == 0:
             value = json.loads(result.stdout)
             if not all(isinstance(value.get(key), str) and value[key] for key in ('username', 'password')):
@@ -34,7 +34,7 @@ def read_credentials(container, role):
 
 
 def wait_for_api(container, address):
-    """从注册商容器确认 API 端口可达，认证由产品配置脚本验证。 / Check API reachability from the registrar; product setup verifies authentication."""
+    """Check API reachability from the registrar; product setup verifies authentication."""
     address = str(ipaddress.IPv4Address(address))
     code = f'$s=@fsockopen("{address}",7650,$e,$m,1); if(!$s)exit(1); fclose($s);'
     for attempt in range(60):
@@ -46,7 +46,7 @@ def wait_for_api(container, address):
 
 
 def main(argv=None):
-    """依次核对 host、验证主从 API 并配置产品。 / Check hosts, verify both APIs, and configure the product."""
+    """Check hosts, verify both APIs, and configure the product."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--container', required=True)
     parser.add_argument('--registry-container', required=True)
@@ -58,7 +58,7 @@ def main(argv=None):
         parser.error('--product-id must be positive')
     stage = 'read configuration'
     try:
-        hosting = json.loads(docker(args.container, 'cat', '/opt/b02c/dns-hosting.json').stdout)
+        hosting = json.loads(docker(args.container, 'cat', '/opt/dns-hosting/dns-hosting.json').stdout)
         hosts = [[hosting['ns1'], hosting['primary']], [hosting['ns2'], hosting['secondary']]]
         stage = 'wait for nameserver initialization'
         marker = '/run/registry-hosts-' + hosting['domain']
@@ -71,7 +71,7 @@ def main(argv=None):
                 raise RuntimeError('Registry nameserver initialization timed out')
             time.sleep(2)
         stage = 'verify nameserver hosts'
-        # 环境变量仅传递非敏感拓扑信息。 / Environment variables carry only non-secret topology metadata.
+        # Environment variables carry only non-secret topology metadata.
         result = subprocess.run([
             'docker', 'exec', '-i', '-e', 'B02C_HOSTS=' + json.dumps(hosts),
             '-e', 'B02C_REGISTRAR=' + hosting['registrar'], '-e', 'B02C_PARENT=' + hosting['domain'],
@@ -91,7 +91,7 @@ def main(argv=None):
         if result.stdout:
             sys.stdout.write(result.stdout)
         if result.returncode:
-            # 产品模板只输出不含认证信息的错误。 / The product template emits credential-free errors only.
+            # The product template emits credential-free errors only.
             raise RuntimeError(result.stderr.strip() or 'DNS Hosting product initialization failed')
         return 0
     except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:

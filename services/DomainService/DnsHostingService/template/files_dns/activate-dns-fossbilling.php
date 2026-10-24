@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// 本地 CLI 初始化；不提供网页入口，也不读取或输出管理员凭据。 / Initialize locally through CLI without a web endpoint or reading or printing administrator credentials.
+// Initialize locally through CLI without a web endpoint or reading or printing administrator credentials.
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
     exit(1);
@@ -18,7 +18,7 @@ $di['translate']();
 try {
     $di['pdo']->query('SELECT id FROM extension LIMIT 1');
 } catch (Throwable $error) {
-    // 安装向导尚未创建数据库/表；由启动脚本稍后重试。 / The installer has not created the database or tables; retry after application setup.
+    // The installer has not created the database or tables; retry after application setup.
     exit(75);
 }
 try {

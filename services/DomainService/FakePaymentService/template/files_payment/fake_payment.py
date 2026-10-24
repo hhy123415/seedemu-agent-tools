@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""仿真收银台：验证请求签名，确认后回调 FOSSBilling。 / Simulation checkout: verify request signatures and notify FOSSBilling after confirmation."""
+"""Simulation checkout: verify request signatures and notify FOSSBilling after confirmation."""
 from decimal import Decimal, InvalidOperation
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,21 +12,21 @@ from urllib.request import Request, urlopen
 
 
 def signature(secret, *values):
-    """计算字段顺序固定的 HMAC。 / Compute an HMAC over ordered fields."""
+    """Compute an HMAC over ordered fields."""
     return hmac.new(secret, '|'.join(values).encode(), hashlib.sha256).hexdigest()
 
 
 class Handler(BaseHTTPRequestHandler):
-    """处理健康检查和模拟付款表单。 / Handle health checks and simulated payment forms."""
+    """Handle health checks and simulated payment forms."""
 
     def do_GET(self):
-        """提供健康检查；付款只能使用 POST。 / Provide health checks; payments require POST."""
+        """Provide health checks; payments require POST."""
         if self.path == '/health':
             return self.reply(200, 'ok')
         return self.reply(404, 'not found')
 
     def do_POST(self):
-        """验证金额、回调来源和签名，用户确认后才发起回调。 / Validate amount, callback origin, and signature; notify only after confirmation."""
+        """Validate amount, callback origin, and signature; notify only after confirmation."""
         if self.path != '/pay':
             return self.reply(404, 'not found')
         try:
@@ -72,10 +72,10 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Callback rejected')
         except Exception:
             return self.reply(502, 'FOSSBilling callback failed; check invoice status before retrying')
-        self.reply(200, f'<h1>模拟付款已提交</h1><p>发票 #{invoice}；请返回 FOSSBilling 检查发票、订单及域名状态。</p>', 'text/html')
+        self.reply(200, f'<h1>模拟付款已提交</h1><p>发票 #{invoice}；请刷新当前账单页面检查付款状态，并核对订单及域名状态。</p>', 'text/html')
 
     def reply(self, status, body, content_type='text/plain'):
-        """发送 UTF-8 响应。 / Send a UTF-8 response."""
+        """Send a UTF-8 response."""
         data = body.encode()
         self.send_response(status)
         self.send_header('Content-Type', content_type + '; charset=utf-8')
@@ -85,7 +85,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def create_server(address, settings, secret):
-    """为独立实例创建 HTTP 服务。 / Create an HTTP server for an isolated instance."""
+    """Create an HTTP server for an isolated instance."""
     server = ThreadingHTTPServer(address, Handler)
     server.payment_settings = settings
     server.payment_secret = secret
@@ -93,6 +93,6 @@ def create_server(address, settings, secret):
 
 
 if __name__ == '__main__':
-    settings = json.loads(Path('/opt/b02d/payment-config.json').read_text())
-    secret = Path('/opt/b02d/secret').read_text().strip().encode()
+    settings = json.loads(Path('/opt/fake-payment/payment-config.json').read_text())
+    secret = Path('/opt/fake-payment/secret').read_text().strip().encode()
     create_server(('0.0.0.0', settings['port']), settings, secret).serve_forever()
