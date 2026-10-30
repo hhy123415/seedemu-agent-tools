@@ -10,7 +10,6 @@ and startup operations.
 ```text
 H12_domain_name_purchase/
 ├── domain_name_purchase.py
-├── setup.py
 └── output/
 ```
 
@@ -25,7 +24,6 @@ cd output
 docker compose build
 docker compose up -d
 cd ..
-python setup.py
 ```
 
 The scenario always includes all four services. `domain_name_purchase.py` only generates
@@ -39,35 +37,62 @@ Services initialize locally when their containers start:
   configures the site URL, EPP/TLDs, demo client, and cron, then removes the installer.
 - Registry registers hosting nameserver hosts after creating the registrar and reserved
   domains. Existing records are checked without being overwritten.
-- FakePayment enables the local payment gateway after FOSSBilling initialization succeeds.
+- FOSSBilling installs its payment adapter and enables the gateway after local initialization;
+  FakePayment starts the independent checkout endpoint.
 
-`setup.py` performs the remaining operations:
+DNS Hosting also initializes automatically. The example explicitly creates the DNS API
+pair with `dns.addHosting()`, registers NS hosts with `namingo_server.addNameServers()`,
+and associates the registrar using `fossbilling_server.setDnsHostings(dns_hosting)`. The service provisions separate primary and
+secondary API credentials into the DNS nodes and the registrar, then configures the DNS
+extension and product after local FOSSBilling initialization completes. Credentials are stored
+in mode-0600 files; deploy the DNS nodes and registrar from the same render.
 
-1. Check all required components and wait for Registry and FOSSBilling initialization.
-2. Verify EPP authentication and client login.
-3. Wait for and verify nameserver host records, read generated primary/secondary BIND API
-   credentials, verify connectivity, and configure the DNS Hosting product.
-4. Verify payment configuration, shared signing secrets, checkout connectivity, and the
-   enabled gateway without rewriting gateway configuration.
-
-A failed step stops subsequent operations and returns a nonzero exit status. Setup does
-not build or start containers or initialize their local databases. For initialization
-failures, inspect the relevant container logs:
-`/var/log/fossbilling-initialize.log`, `/var/log/registry-hosts-example.com.log`, and
-`/var/log/fake-payment-initialize.log`. Fix the issue, restart the affected container to
-rerun initialization, and run setup again.
-
-Existing administrators, clients, and product prices are preserved. A client password or
-nameserver ownership mismatch raises an error without overwriting data. Cross-container
-verification or product configuration failures can be retried with `python setup.py`.
-These workflows do not pay invoices or retry customer orders automatically.
+Initialization failures are recorded in `/var/log/fossbilling-initialize.log` and
+`/run/fossbilling-initialization.failed`. Fix the cause and restart the registrar to retry.
+`/run/fossbilling-initialized` marks successful product configuration. Existing administrators,
+clients, and product prices are preserved. Startup does not pay invoices or retry customer orders.
 
 ## Generation Options
 
 The Python entry point generates configuration without building or starting Docker.
-Both generation and setup accept `--output PATH`; use the same directory for both.
-Generation supports `--platform amd` and `--platform arm`. Setup's `--timeout` controls
-the Registry wait timeout, which defaults to 240 seconds.
+Generation accepts `--output PATH`, `--platform amd`, and `--platform arm`.
+
+## Automated Tests
+
+`example.yaml` uses the same `seedemu.testing` lifecycle runner as
+`seed-emulator/examples/sample`. From the workspace containing `emuvista` and
+`seed-emulator`, run:
+
+```bash
+emuvista/.venv/bin/python seed-emulator/seedemu/testing/cli.py all emuvista/examples/H12_domain_name_purchase/example.yaml --artifact-dir /tmp/h12-test-results
+```
+
+Use a Python environment with the scenario dependencies installed. `all` cleans
+`output`, compiles, builds, starts containers, waits for initialization, runs probes
+and custom tests, and tears down the Compose project in a final cleanup step.
+Use this lifecycle on a disposable H12 deployment. Individual commands are
+`compile`, `build`, `up`, `readiness`, `probe`, `test`, and `down`; replace `all`
+in the command above to run a single stage. `up` also runs readiness checks.
+
+`test_runtime.py` discovers nodes through SEED Emulator labels and checks
+FOSSBilling/payment initialization, HTTP connectivity, the Registry TLS EPP greeting,
+DNS API port connectivity, BIND configuration/control, primary/secondary NS answers,
+and recursive resolution.
+
+After these checks pass, the same script runs its purchase workflow inside the
+registrar using the demo customer account. It registers a unique `h12-test-<random>.com` domain through
+the customer API, submits the invoice's signed FakePayment form, waits for the paid
+invoice and active order, sets the hosting nameservers, purchases DNS Hosting, and
+adds `www` pointing to `192.0.2.123`. The runtime test then checks the Registry domain
+and nameservers, COM parent delegation, both authoritative DNS answers, and recursive
+resolution. Checkout and payment are submitted once; only status and DNS checks poll.
+
+Each run creates new orders and a new domain. Test data remains in the deployment;
+the test does not cancel orders or delete registrations. On failure, the purchase
+result includes the domain, last stage, and known order/invoice IDs for inspection.
+
+Failures return a nonzero exit code. The artifact directory contains command logs,
+stage summaries, and `h12-custom-runtime-test.json` with individual runtime results.
 
 ## Web Endpoints
 
@@ -93,8 +118,8 @@ the browser and agent chat interface.
 
 Configure host ports with `setPortForwarding(host_port)`; pass `None` to disable forwarding.
 FOSSBilling derives its local URL from the forwarded port, preserving localhost in links
-and redirects for localhost requests. Update `setBrowserUrls()` when changing payment
-endpoints. See the [service documentation](../../services/DomainService/README.md).
+and redirects for localhost requests. FOSSBilling derives local checkout
+URLs from its own and the selected payment service's forwarded ports. See the [service documentation](../../services/DomainService/README.md).
 
 ## DNS Hosting and Resolution
 
@@ -115,24 +140,15 @@ dig @10.153.0.53 www.your-domain.com A
 ```
 
 Run these commands in a container with access to the simulation network and substitute
-the actual domain. Successful setup does not prove purchase or resolution success:
+the actual domain. Successful initialization does not prove purchase or resolution success:
 check invoices, orders, Registry registration, parent delegation, and authoritative records.
 
 ## Container Selection and Products
 
-Setup locates containers by these Compose service names; override them with the listed options:
-
-| Service | Compose service | Override |
-| --- | --- | --- |
-| Registry | `hnode_151_host_1` | `--registry-service` |
-| FOSSBilling | `hnode_150_host_1` | `--fossbilling-service` |
-| Primary DNS | `hnode_170_host_0` | `--primary-dns-service` |
-| Secondary DNS | `hnode_170_host_1` | `--secondary-dns-service` |
-| Checkout | `hnode_160_host_1` | `--payment-service` |
-
-Update service selections when changing host bindings. Use `--dns-product-id ID` when
-multiple DNS products exist. Existing prices are preserved; if no product exists, setup
-creates a free simulation hosting product.
+Service bindings determine the Registry, registrar, and DNS nodes. No host-side setup
+or container selection is needed. When multiple DNS products exist, select one on the
+registrar with `registrar.setDnsHostings(dns_hosting, product_id=ID)` before rendering. Existing prices are
+preserved; if no product exists, startup creates a free simulation hosting product.
 
 ## Cleanup and Data
 
