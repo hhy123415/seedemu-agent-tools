@@ -8,7 +8,7 @@ def registrar_find(filter=None):
         "registrar_url": "http://10.150.0.72:8080",
         "hosted_dns_tool": "dns.hosted_find",
         "payment_service_id": "payment",
-        "payment_url": "http://10.160.0.72:8080",
+        "payment_url": "http://10.160.0.71:8080",
         "instructions": "Open the registrar website with browser.action. Use observed links/forms. "
         "Keep the same browser context after login. Verify account identity, cart, "
         "invoice and domain service separately. Do not repeat a paid order.",

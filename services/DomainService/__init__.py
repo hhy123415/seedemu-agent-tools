@@ -1,13 +1,13 @@
 """Export Registry, FOSSBilling, DNS hosting, and simulated payment services.
 """
-from .RegistryService import RegistryService, RegistryServer
-from .FossBillingService import FossBillingService, FossBillingServer
+from .NamingoRegistryService import NamingoRegistryService, NamingoRegistryServer
+from .FossBillingRegistrarService import FossBillingRegistrarService, FossBillingRegistrarServer
 from .FakePaymentService import FakePaymentService, FakePaymentServer
-from .DnsHostingService import DnsHostingService, DnsHostingServiceMerger, DnsUpdateAuthorization
+from .DnsService import DnsService, DnsServer, DnsServiceMerger, DnsUpdateAuthorization
 
 __all__ = [
-    'DnsUpdateAuthorization', 'DnsHostingServiceMerger',
+    'DnsUpdateAuthorization', 'DnsServiceMerger',
     'FakePaymentService', 'FakePaymentServer',
-    'RegistryService', 'RegistryServer',
-    'FossBillingService', 'FossBillingServer', 'DnsHostingService',
+    'NamingoRegistryService', 'NamingoRegistryServer',
+    'FossBillingRegistrarService', 'FossBillingRegistrarServer', 'DnsService', 'DnsServer',
 ]

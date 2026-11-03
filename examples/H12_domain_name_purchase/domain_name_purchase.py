@@ -10,9 +10,9 @@ SEED_EMULATOR = HERE.parents[2] / 'seed-emulator'
 sys.path.insert(0, str(SEED_EMULATOR))
 sys.path.insert(0, str(SERVICES))
 
-from DomainService import RegistryService, FossBillingService, DnsHostingService, FakePaymentService
-from DomainService import DnsHostingServiceMerger
-from seedemu.core import Binding, Filter, Emulator
+from DomainService import NamingoRegistryService, FossBillingRegistrarService, DnsService, FakePaymentService
+from DomainService import DnsServiceMerger
+from seedemu.core import Binding, Filter, Emulator, Action
 from seedemu.compiler import Docker, Platform
 from examples.internet.B02_mini_internet_with_dns.mini_internet_with_dns import build_emulator as build_b02
 
@@ -22,41 +22,41 @@ def build_emulator():
     emu = build_b02()
     # Use the native merge API to install the DNS subclass, retaining B02 zones, nodes and bindings.
     dns_extension = Emulator()
-    dns_extension.addLayer(DnsHostingService())
-    emu = emu.merge(dns_extension, [DnsHostingServiceMerger()])
+    dns_extension.addLayer(DnsService())
+    emu = emu.merge(dns_extension, [DnsServiceMerger()])
     # ------------------------------------------------------------------------
     # Registry and DNS publication authorization
     # ------------------------------------------------------------------------
-    registry = RegistryService()
-    server = registry.install('registry')
-    server.setPortForwarding(18081)
-    server.setTlds(['com', 'net'])
-    server.setAdminAccount('admin@example.com', '123456')
-    server.setDatabasePassword('b02a-registry-database')
+    registry_service = NamingoRegistryService()
+    registry_server = registry_service.install('registry')
+    registry_server.setPortForwarding(18081)
+    registry_server.setTlds(['com', 'net'])
+    registry_server.setAdminAccount('admin@example.com', '123456')
+    registry_server.setDatabasePassword('registry-database-password')
     authorization = emu.getLayer('DomainNameService').authorizeZoneUpdates(
         ['com', 'net'],
     )
-    server.setDnsAuthorization(authorization)
-    server.enableDnsPublication(['com', 'net'])
-    emu.addLayer(registry)
-    emu.addBinding(Binding('registry', filter=Filter(asn=151, nodeName='host_1')))
+    registry_server.setDnsAuthorization(authorization)
+    registry_server.enableDnsPublication(['com', 'net'])
+    emu.addLayer(registry_service)
+    emu.addBinding(Binding('registry', filter=Filter(asn=151, nodeName=r'^host_'), action=Action.FIRST))
 
     # ------------------------------------------------------------------------
     # Registrar and domain products
     # ------------------------------------------------------------------------
-    registrar_service = FossBillingService()
-    server = registrar_service.install('fossbilling')
-    server.setPortForwarding(18080)
-    server.setRegistry('registry')
-    server.setTlds(['com', 'net'])
-    server.setAdminAccount('admin@example.com', 'Aa123456')
-    server.setClientAccount('user@example.com', 'Aa123456')
-    server.setTldPrice('com', '11.99', '11.99', '11.99')
-    server.setTldPrice('net', '11.99', '11.99', '11.99')
+    registrar_service = FossBillingRegistrarService()
+    registrar_server = registrar_service.install('fossbilling')
+    registrar_server.setPortForwarding(18080)
+    registrar_server.setRegistry('registry')
+    registrar_server.setTlds(['com', 'net'])
+    registrar_server.setAdminAccount('admin@example.com', 'Aa123456')
+    registrar_server.setClientAccount('user@example.com', 'Aa123456')
+    registrar_server.setTldPrice('com', '11.99', '11.99', '11.99')
+    registrar_server.setTldPrice('net', '11.99', '11.99', '11.99')
     # Reserve domains used by base DNS and hosting to prevent resale.
-    server.setReservedDomains(['google.com', 'twitter.com', 'example.com'])
+    registrar_server.setReservedDomains(['google.com', 'twitter.com', 'example.com'])
     emu.addLayer(registrar_service)
-    emu.addBinding(Binding('fossbilling', filter=Filter(asn=150, nodeName='host_1')))
+    emu.addBinding(Binding('fossbilling', filter=Filter(asn=150, nodeName=r'^host_'), action=Action.FIRST))
 
     # ------------------------------------------------------------------------
     # Primary-secondary DNS and hosting
@@ -64,22 +64,23 @@ def build_emulator():
     dns = emu.getLayer('DomainNameService')
     dns.install('hosted-dns-primary').addZone('example.com.').setMaster()
     dns.install('hosted-dns-secondary').addZone('example.com.')
-    emu.addBinding(Binding('hosted-dns-primary', filter=Filter(asn=170, nodeName='host_0')))
-    emu.addBinding(Binding('hosted-dns-secondary', filter=Filter(asn=170, nodeName='host_1')))
-    hosting = dns.addHosting('hosted-dns-primary', 'hosted-dns-secondary', domain='example.com')
-    hosting.setRegistrar('fossbilling')
+    dns_hosting = dns.addHosting('hosted-dns-primary', 'hosted-dns-secondary', domain='example.com')
+    dns_hosting.addRegistrarToRateLimitWhitelist('fossbilling')
+    registry_server.addNameServers(dns_hosting, epp_username=registrar_server.getEppUsername())
+    registrar_server.setDnsHostings(dns_hosting)
+    emu.addBinding(Binding('hosted-dns-primary', filter=Filter(asn=170, nodeName=r'^host_'), action=Action.FIRST))
+    emu.addBinding(Binding('hosted-dns-secondary', filter=Filter(asn=170, nodeName=r'^host_'), action=Action.FIRST))
 
     # ------------------------------------------------------------------------
     # Simulated payment checkout
     # ------------------------------------------------------------------------
     fake_payment_service = FakePaymentService()
-    checkout = fake_payment_service.install('fake-payment')
-    checkout.setPortForwarding(18083)
-    checkout.setRegistrar('fossbilling').setPort(8080)
-    checkout.setBrowserUrls({'localhost:18080': 'http://localhost:18083/pay',
-                             '127.0.0.1:18080': 'http://127.0.0.1:18083/pay'})
+    fake_payment_server = fake_payment_service.install('fake-payment')
+    fake_payment_server.setPortForwarding(18083)
+    fake_payment_server.setPort(8080)
+    registrar_server.setPaymentService('fake-payment')
     emu.addLayer(fake_payment_service)
-    emu.addBinding(Binding('fake-payment', filter=Filter(asn=160, nodeName='host_1')))
+    emu.addBinding(Binding('fake-payment', filter=Filter(asn=160, nodeName=r'^host_'), action=Action.FIRST))
     return emu
 
 

@@ -14,7 +14,6 @@ cd output
 docker compose build
 docker compose up -d
 cd ..
-python setup.py
 ```
 
 The agent UI is at <http://localhost:18089/> and includes a live browser view.
@@ -70,11 +69,9 @@ from containers. The environment does not automatically test model APIs or run a
 
 - `browser_agent.py` generates H13 deployment files without building or starting containers.
 - `container/prepare_context.py` prepares the build context after compilation.
-- `setup.py` waits for H12 initialization, performs cross-container configuration and
-  verification, then verifies the agent HTTP endpoint and an actual Playwright connection.
 - Cleanup: `docker compose -f output/docker-compose.yml down --remove-orphans --volumes`
   removes containers, networks, and project volumes. Adjust the path for custom output.
-- Generation and setup support `--output`; generation also supports `--platform`.
+- Generation supports `--output` and `--platform`; domain services initialize at container startup.
 
 H12 and H13 use the same default Compose project `output` and application ports. Run them
 as alternative scenarios, not simultaneously. Before switching, the cleanup command above
@@ -110,11 +107,10 @@ Use `--output` to select an existing Compose directory. Initial deployment or de
 after cleanup still requires generation, build, and startup first. Restarting closes the
 browser session but preserves saved model profiles; refresh the UI and start a new chat.
 
-Dependencies are installed in separate layers. apt, Composer, and pip use BuildKit download
-caches. Changes to installation steps rebuild affected layers; later agent source or profile
+Dependencies are installed in separate layers compatible with the legacy builder and
+BuildKit. Changes to installation steps rebuild affected layers; later agent source or profile
 changes affect only subsequent copy layers. Retry a failed image build with
-`docker compose build` from `output`, without cleanup. Shared download caches use locks, so
-parallel builds may wait for another installation step.
+`docker compose build` from `output`, without cleanup.
 
 Networking is configured by `container/start.sh`, installed at `/opt/browser-agent/start.sh`.
 Before starting dnsmasq, the browser, and the agent, it reads `egress_urls.txt` and configures
