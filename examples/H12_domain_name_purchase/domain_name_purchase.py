@@ -11,7 +11,7 @@ sys.path.insert(0, str(SEED_EMULATOR))
 sys.path.insert(0, str(SERVICES))
 
 from DomainService import NamingoRegistryService, FossBillingRegistrarService, DnsService, FakePaymentService
-from DomainService import DnsServiceMerger
+from DomainService import DnsServiceMerger, DomainDataService
 from seedemu.core import Binding, Filter, Emulator, Action
 from seedemu.compiler import Docker, Platform
 from examples.internet.B02_mini_internet_with_dns.mini_internet_with_dns import build_emulator as build_b02
@@ -81,6 +81,10 @@ def build_emulator():
     registrar_server.setPaymentService('fake-payment')
     emu.addLayer(fake_payment_service)
     emu.addBinding(Binding('fake-payment', filter=Filter(asn=160, nodeName=r'^host_'), action=Action.FIRST))
+    
+    domain_data = DomainDataService()
+    domain_data.importFile(HERE / 'domains.example.yaml')
+    emu.addLayer(domain_data)
     return emu
 
 
@@ -100,7 +104,7 @@ def main(argv=None):
         if not (output / 'docker-compose.yml').is_file():
             raise RuntimeError(f'Missing {output / "docker-compose.yml"}')
         return 0
-    except (OSError, RuntimeError) as error:
+    except (OSError, RuntimeError, ValueError, KeyError) as error:
         print(str(error), file=sys.stderr)
         return 1
 

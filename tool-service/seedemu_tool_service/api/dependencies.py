@@ -9,6 +9,7 @@ from seedemu_tool_service.tools.bgp import register_bgp_tools
 from seedemu_tool_service.tools.dns import register_dns_tools
 from seedemu_tool_service.tools.network import register_network_tools
 from seedemu_tool_service.tools.pki import register_pki_tools
+from seedemu_tool_service.tools.socialmedia import register_socialmedia_tools
 
 
 @lru_cache
@@ -28,6 +29,7 @@ def create_tool_registry() -> ToolRegistry:
     register_dns_tools(registry, backend)
     register_network_tools(registry, backend)
     register_pki_tools(registry, backend)
+    register_socialmedia_tools(registry, backend)
     return registry
 
 

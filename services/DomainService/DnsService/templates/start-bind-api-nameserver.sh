@@ -32,7 +32,7 @@ if [ ! -s /etc/bind/rndc.key ]; then rndc-confgen -a; fi
 chown root:bind /etc/bind/rndc.key
 chmod 640 /etc/bind/rndc.key
 php8.5 /opt/dns-hosting/init-bind-api-nameserver.php
-named-checkconf
+named-checkconf -z
 # DomainNameService starts BIND later; the API waits for its local control interface.
 (
     for attempt in $(seq 1 120); do

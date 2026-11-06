@@ -165,3 +165,68 @@ H12 and H13 both default to the Compose project `output` and use the same applic
 deploy one at a time. Generation does not clean data automatically. Check which data must
 be preserved before switching deployments. Scripts forward underlying command output and
 necessary error messages.
+
+## Initial Domain Data Import
+
+`domains.example.yaml` contains two registered domains, shared contacts, customer
+accounts, and nameserver-to-node mappings for this H12 topology. The scenario loads
+this file directly from its own directory:
+
+```python
+from DomainService import DomainDataService
+
+domain_data = DomainDataService()
+emu.addLayer(domain_data)
+domain_data.importFile(HERE / 'domains.example.yaml')
+```
+
+From this example directory, generate a separate deployment:
+
+```bash
+python domain_name_purchase.py --output output-import
+```
+
+`clients` maps file-local identifiers to `email`, `password`, and a `contact`
+reference. `contacts` holds contact profiles. A domain's `registrant` and
+`registrar.client` reference these dictionaries. Passwords are read directly from
+YAML and written to the registrar's mode-0600 initialization payload.
+
+The import pipeline is:
+
+1. `importFile()` reads YAML; `configure()` resolves service/node references and
+   prepares all payloads before dispatch. Repeated domains, missing references,
+   Registry/Registrar mismatches, and apex NS/SOA overrides are rejected.
+2. `NamingoRegistryServer.importDomains()` receives registration/contact/NS data;
+   `FossBillingRegistrarServer.importDomains()` receives customer and domain-service
+   data; `DnsService.importZone()` receives complete BIND zone text and node mappings.
+3. Each server installs its own artifacts. Registry initializes contacts, domains,
+   and host associations after EPP registrar/hosting host initialization. FOSSBilling
+   creates customers and active domain services before marking initialization ready.
+   DNS adds records to native `Zone` objects and registers nodes with `addZone()`;
+   the native installer writes zone files and primary/secondary configuration.
+   Imported zones are visible through `getZones()` and `getZoneServerNames()`.
+   Parent-zone
+   delegation remains the responsibility of Registry's existing publication loop.
+
+Initial import currently supports `ok` Registry status and `active` Registrar
+status, one-label TLDs, and up to four nameservers per domain. DNS roles come from
+existing `setMaster()` configuration. Nameserver parent domains and their authoritative
+address records must already be configured (H12 provides `example.com`). Imported
+zones are static BIND zones, not DNS Hosting API zones; this does not create DNS
+Hosting subscriptions or make the imported records editable through that API.
+`auto_renew` is retained in order configuration as a preference only: this version
+does not implement automatic renewal, generate renewal invoices, or make payments.
+
+Each application's database import uses a local transaction. An import ledger skips
+unchanged input on container restart and rejects changed input; existing domain
+objects are not overwritten. There is no transaction across Registry, Registrar and
+DNS, so a successful render is not proof of successful business initialization.
+Inspect `/var/log/registry-import.log` and `/var/log/fossbilling-initialize.log`, then
+verify Registry, Registrar and DNS after startup. DNS Hosting validates the unified
+BIND configuration and primary zone files with `named-checkconf -z` during startup.
+
+Run offline checks from the workspace root:
+
+```bash
+emuvista/.venv/bin/python emuvista/examples/H12_domain_name_purchase/test_domain_import.py
+```

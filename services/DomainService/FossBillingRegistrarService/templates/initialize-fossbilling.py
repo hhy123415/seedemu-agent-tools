@@ -173,6 +173,9 @@ def main():
             subprocess.run(['php8.5', '/opt/dns-hosting/configure-dns-hosting-product.php'],
                            input=Path('/opt/dns-hosting/product-credentials.json').read_text(),
                            text=True, check=True)
+        if (HERE / 'import-domains.json').exists():
+            stage = 'import customer and domain data'
+            execute('php8.5', str(HERE / 'import-domains.php'))
         ready.touch()
         return 0
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, KeyError) as error:

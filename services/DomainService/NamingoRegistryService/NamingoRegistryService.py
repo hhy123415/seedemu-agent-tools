@@ -2,6 +2,7 @@
 from seedemu.core import Node, Server, Service
 
 import json
+from copy import deepcopy
 import re
 import shlex
 from pathlib import Path
@@ -18,6 +19,7 @@ NamingoRegistryFileTemplates = {
         'create-nameserver-hosts.php',
         'init-database.sql',
         'init-tlds.php',
+        'import-domains.php',
         'initialize-nameserver-hosts.sh',
         'nginx-registry.conf',
         'publish-dns-delegations-loop.sh',
@@ -76,6 +78,7 @@ class NamingoRegistryServer(Server):
         self._publication_interval = 30
         self._registrars = {}
         self._nameservers = []
+        self._imported_domains = []
         self._tlds = ('com', 'net')
         self._epp_port = 700
         self._db_password = 'registry-database-password'
@@ -108,6 +111,11 @@ class NamingoRegistryServer(Server):
     def getTlds(self):
         """Return a copy of the TLD list without leading dots."""
         return list(self._tlds)
+
+    def importDomains(self, records):
+        """Queue Registry records for transactional initialization in this server."""
+        self._imported_domains.extend(deepcopy(records))
+        return self
 
     def setEppPort(self, port: int):
         """Set the EPP listening port, returning this instance."""
@@ -186,6 +194,15 @@ class NamingoRegistryServer(Server):
             if epp_username not in self._registrars or settings['domain'] not in self._registrars[epp_username]['domains']:
                 raise ValueError('Nameserver parent domain must be reserved by the selected EPP registrar')
             self._installNameServers(node, settings, epp_username)
+        if self._imported_domains:
+            node.setFile('/opt/registry/import-domains.json', json.dumps(self._imported_domains) + '\n')
+            node.setFile('/opt/registry/import-domains.php', NamingoRegistryFileTemplates['import-domains.php'])
+            node.addBuildCommandAtEnd('chmod 600 /opt/registry/import-domains.json')
+            node.appendStartCommand(
+                'rm -f /run/registry-import.ready /run/registry-import.failed; '
+                'php8.5 /opt/registry/import-domains.php > /var/log/registry-import.log 2>&1 '
+                '&& touch /run/registry-import.ready '
+                '|| { touch /run/registry-import.failed; exit 1; }')
         if self._publication_tlds:
             if set(self._publication_tlds) - set(self._tlds):
                 raise ValueError('Publication TLDs must remain managed by Registry')

@@ -1,5 +1,6 @@
 """Install the FOSSBilling registrar on an existing host."""
 import json
+from copy import deepcopy
 import shlex
 from decimal import Decimal
 from pathlib import Path
@@ -25,6 +26,7 @@ FossBillingRegistrarFileTemplates = {
         'create-client.php',
         'fake-payment-adapter.php',
         'initialize-fossbilling.py',
+        'import-domains.php',
         'initialize-payment-gateway.sh',
         'nginx-fossbilling.conf',
         'patch-checkout-order-activation.php',
@@ -56,6 +58,7 @@ class FossBillingRegistrarServer(Server):
         self._tlds = None
         self._prices = {}
         self._reserved = []
+        self._imported_domains = []
         self._connection = None
         self._dns_hosting = None
         self._dns_product_id = None
@@ -92,6 +95,15 @@ class FossBillingRegistrarServer(Server):
         """Use an existing DNS hosting pair for this registrar's local product."""
         self._dns_hosting = hosting
         self._dns_product_id = product_id
+        return self
+
+    def getRegistry(self):
+        """Return the selected Registry virtual node."""
+        return self._registry
+
+    def importDomains(self, records):
+        """Queue customer and domain service data; do not trigger EPP purchases."""
+        self._imported_domains.extend(deepcopy(records))
         return self
 
     def setPaymentService(self, virtual_node):
@@ -247,6 +259,10 @@ class FossBillingRegistrarServer(Server):
         for name in ('initialize-fossbilling.py', 'configure-site-url.php', 'configure-epp-registrar.php', 'create-client.php'):
             node.setFile('/opt/fossbilling/' + name, FossBillingRegistrarFileTemplates[name])
         node.appendStartCommand('python3 /opt/fossbilling/initialize-fossbilling.py > /var/log/fossbilling-initialize.log 2>&1')
+        if self._imported_domains:
+            node.setFile('/opt/fossbilling/import-domains.json', json.dumps(self._imported_domains) + '\n')
+            node.setFile('/opt/fossbilling/import-domains.php', FossBillingRegistrarFileTemplates['import-domains.php'])
+            node.addBuildCommandAtEnd('chmod 600 /opt/fossbilling/import-domains.json')
 
     def _installDnsHosting(self, node):
         """Install the extension and configure its product after local initialization."""

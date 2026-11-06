@@ -74,6 +74,27 @@ class DnsServer(DomainNameServer):
     def __init__(self):
         super().__init__()
         self._hosting_configuration = None
+        self._is_master = False
+
+    def setMaster(self):
+        """Keep the subclass role synchronized with native DNS configuration."""
+        super().setMaster()
+        self._is_master = True
+        return self
+
+    def isMaster(self):
+        """Return the configured server role."""
+        return self._is_master
+
+    def configure(self, node, dns):
+        """Preserve native configuration and register masters for explicit zones."""
+        super().configure(node, dns)
+        if self.isMaster():
+            address = str(node.getInterfaces()[0].getAddress())
+            for name in self.getZones():
+                zone = dns.getZone(name).getName()
+                if address not in dns.getMasterIp().get(zone, []):
+                    dns.addMasterIp(zone, address)
 
     def install(self, node, dns):
         """Install base DNS and the prepared hosting configuration on this node."""
@@ -145,14 +166,31 @@ class DnsService(DomainNameService):
     def _createServer(self):
         return DnsServer()
 
+    def getPrimaryNameServer(self, nameservers):
+        """Return the first nameserver configured as primary in the scenario."""
+        targets = self.getPendingTargets()
+        return next(ns for ns, vnode in nameservers.items() if targets[vnode].isMaster())
+
+    def importZone(self, domain, content, nameservers):
+        """Import BIND text on existing DNS nodes; Registry publishes delegation."""
+        zone = self.getZone(domain + '.')
+        for record in list(zone.getRecords()):
+            zone.deleteRecord(record)
+        for record in content.splitlines():
+            zone.addRecord(record)
+        for vnode in nameservers.values():
+            self.getPendingTargets()[vnode].addZone(domain + '.', createNsAndSoa=False)
+        return self
+
     def _prepareHostingConfiguration(self, hosting, primary, secondary, client_ips):
         """Validate resolved DNS nodes and prepare hosting settings and credentials."""
         for vnode in (hosting._primary, hosting._secondary):
             if vnode not in self.getPendingTargets():
                 raise ValueError(f'{vnode} must be installed by DomainNameService')
             server = self.getPendingTargets()[vnode]
-            if server.getZones() != [hosting._domain + '.'] or server.getIncludePath(hosting._domain + '.') is not None:
-                raise ValueError('Hosted DNS nodes must exclusively host the selected zone without custom includes')
+            if (hosting._domain + '.' not in server.getZones()
+                    or any(server.getIncludePath(zone) is not None for zone in server.getZones())):
+                raise ValueError('Hosted DNS nodes must host the selected zone without custom includes')
         primary_ip = str(primary.getInterfaces()[0].getAddress())
         secondary_ip = str(secondary.getInterfaces()[0].getAddress())
         if self.getMasterIp().get(hosting._domain + '.') != [primary_ip]:
