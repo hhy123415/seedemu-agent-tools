@@ -217,8 +217,12 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+output/
 
 .agentseed*
 
 /social_platforms.md
 /tool-service/tool_authoring.md
+
+.runtime/
+*.bin
