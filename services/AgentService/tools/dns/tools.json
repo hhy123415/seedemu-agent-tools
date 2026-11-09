@@ -1,0 +1,8 @@
+[
+  {"name":"dns.lookup","handler":"handlers:lookup","description":"Query DNS from this agent. Defaults to its configured resolver. Returns response_status, answers and answer records. NXDOMAIN differs from timeout; NOERROR with no answers does not prove the requested record exists. Does not create zones or records.","input_schema":{"type":"object","properties":{
+    "name":{"type":"string","minLength":1,"maxLength":253},
+    "record_type":{"type":"string","enum":["A","AAAA","CNAME","MX","NS","TXT","SOA","PTR","SRV","CAA"],"description":"Default A"},
+    "server":{"type":"string","description":"Optional DNS server IP; otherwise use the agent resolver"},
+    "timeout_seconds":{"type":"integer","minimum":1,"maximum":15,"description":"Default 5"}
+  },"required":["name"],"additionalProperties":false}}
+]

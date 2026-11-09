@@ -36,9 +36,33 @@ FossBillingRegistrarFileTemplates = {
 }
 
 
+def install_from_mirror(node):
+    """Move automatic package installation after the source rewrite."""
+    packages = ' '.join(shlex.quote(package) for package in sorted(node.getSoftware()))
+    # Docker normally installs addSoftware() packages before service commands.
+    # Handle both legacy sources.list and Ubuntu 24.04's deb822 sources.
+    rewrite = (
+        'for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.list '
+        '/etc/apt/sources.list.d/*.sources; do '
+        '[ -f "$file" ] || continue; '
+        "sed -Ei 's|https?://([a-z]{2}\\.)?archive.ubuntu.com/ubuntu/?|https://mirrors.ustc.edu.cn/ubuntu/|g; "
+        "s|https?://security.ubuntu.com/ubuntu/?|https://mirrors.ustc.edu.cn/ubuntu/|g; "
+        "s|https?://ports.ubuntu.com/ubuntu-ports/?|https://mirrors.ustc.edu.cn/ubuntu-ports/|g' "
+        '"$file"; done'
+    )
+    options = '-o Acquire::Retries=0 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
+    command = 'sh -ec ' + shlex.quote(rewrite)
+    if packages:
+        command += (' && apt-get ' + options + 'update && '
+                    'DEBIAN_FRONTEND=noninteractive apt-get ' + options +
+                    'install -y --no-install-recommends ' + packages)
+    node.getBuildCommands().insert(0, command)
+    node.getSoftware().clear()
+
+
 def apt_install(packages):
     """Update indexes and install packages in one Docker layer."""
-    options = '-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
+    options = '-o Acquire::Retries=0 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
     return ('apt-get ' + options + 'update && '
             'DEBIAN_FRONTEND=noninteractive apt-get ' + options + 'install -y '
             + ' '.join(shlex.quote(package) for package in packages.split()))
@@ -208,6 +232,7 @@ class FossBillingRegistrarServer(Server):
             self._installPayment(node)
         if self._forwarded_port is not None:
             node.addPortForwarding(self._forwarded_port, 8080)
+        install_from_mirror(node)
 
     def _installSoftware(self, node):
         """Install the release and Namingo EPP adapter."""
@@ -223,7 +248,7 @@ class FossBillingRegistrarServer(Server):
             'php8.5-mbstring php8.5-xml php8.5-zip php8.5-bcmath php8.5-gmp php8.5-imap'))
         node.addBuildCommand(
             "mkdir -p /var/www/fossbilling "
-            "&& curl --retry 3 --connect-timeout 30 -fsSL https://github.com/FOSSBilling/FOSSBilling/releases/download/"
+            "&& curl --connect-timeout 30 -fsSL https://github.com/FOSSBilling/FOSSBilling/releases/download/"
             f"{FOSSBILLING_VERSION}/FOSSBilling-{FOSSBILLING_VERSION}.zip "
             "-o /tmp/fossbilling.zip "
             "&& unzip -q /tmp/fossbilling.zip -d /var/www/fossbilling "
@@ -231,7 +256,7 @@ class FossBillingRegistrarServer(Server):
         )
         # The official installer generates the Namingo adapter and checks the release hash.
         node.addBuildCommand(
-            "curl --retry 3 --connect-timeout 30 -fsSL https://raw.githubusercontent.com/getnamingo/"
+            "curl --connect-timeout 30 -fsSL https://raw.githubusercontent.com/getnamingo/"
             f"fossbilling-epp-registrar/018911b170ee5c5542d4f29ce6e60fbb1192e95a/"
             "install-fossbilling-epp.sh "
             "-o /tmp/install-fossbilling-epp.sh "
@@ -269,7 +294,7 @@ class FossBillingRegistrarServer(Server):
         settings, credentials = self._dns_hosting.getConfiguration()
         credentials['product_id'] = self._dns_product_id
         node.addBuildCommand(
-            'curl --retry 3 --connect-timeout 30 -fsSL '
+            'curl --connect-timeout 30 -fsSL '
             'https://github.com/getnamingo/fossbilling-dns/releases/download/v1.2.7/fossbilling-dns-v1.2.7.tar.gz '
             '-o /tmp/fossbilling-dns.tar.gz && echo '
             "'8b6171b985c0bae005550f3c2fac752f9c7ccfb4f3f752d62a6920adc68160de  /tmp/fossbilling-dns.tar.gz' "

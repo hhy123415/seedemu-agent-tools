@@ -30,9 +30,33 @@ NamingoRegistryFileTemplates = {
 }
 
 
+def install_from_mirror(node):
+    """Move automatic package installation after the source rewrite."""
+    packages = ' '.join(shlex.quote(package) for package in sorted(node.getSoftware()))
+    # Docker normally installs addSoftware() packages before service commands.
+    # Handle both legacy sources.list and Ubuntu 24.04's deb822 sources.
+    rewrite = (
+        'for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.list '
+        '/etc/apt/sources.list.d/*.sources; do '
+        '[ -f "$file" ] || continue; '
+        "sed -Ei 's|https?://([a-z]{2}\\.)?archive.ubuntu.com/ubuntu/?|https://mirrors.ustc.edu.cn/ubuntu/|g; "
+        "s|https?://security.ubuntu.com/ubuntu/?|https://mirrors.ustc.edu.cn/ubuntu/|g; "
+        "s|https?://ports.ubuntu.com/ubuntu-ports/?|https://mirrors.ustc.edu.cn/ubuntu-ports/|g' "
+        '"$file"; done'
+    )
+    options = '-o Acquire::Retries=0 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
+    command = 'sh -ec ' + shlex.quote(rewrite)
+    if packages:
+        command += (' && apt-get ' + options + 'update && '
+                    'DEBIAN_FRONTEND=noninteractive apt-get ' + options +
+                    'install -y --no-install-recommends ' + packages)
+    node.getBuildCommands().insert(0, command)
+    node.getSoftware().clear()
+
+
 def apt_install(packages):
     """Update indexes and install packages in one Docker layer."""
-    options = '-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
+    options = '-o Acquire::Retries=0 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
     return ('apt-get ' + options + 'update && '
             'DEBIAN_FRONTEND=noninteractive apt-get ' + options + 'install -y '
             + ' '.join(shlex.quote(package) for package in packages.split()))
@@ -207,20 +231,24 @@ class NamingoRegistryServer(Server):
             if set(self._publication_tlds) - set(self._tlds):
                 raise ValueError('Publication TLDs must remain managed by Registry')
             self._installDnsPublication(node)
+        install_from_mirror(node)
 
     def _installSoftware(self, node):
         """Install Registry and its local dependencies."""
-        node.addSoftware('ca-certificates software-properties-common git unzip openssl cron '
+        node.addSoftware('ca-certificates software-properties-common curl git unzip openssl cron '
                          'mariadb-server mariadb-client redis-server nginx')
         node.addBuildCommand('add-apt-repository --no-update -y ppa:ondrej/php')
-        node.addBuildCommand(apt_install('composer'))
         node.addBuildCommand(apt_install(
-            'php8.5-cli php8.5-fpm php8.5-mysql php8.5-curl php8.5-bcmath php8.5-gmp '
+            'composer php8.5-cli php8.5-fpm php8.5-mysql php8.5-curl php8.5-bcmath php8.5-gmp '
             'php8.5-intl php8.5-mbstring php8.5-xml php8.5-zip php8.5-swoole php8.5-imap '
             'php8.5-gd php8.5-bz2 php8.5-soap php8.5-redis'))
         node.addBuildCommand(
-            "git clone https://github.com/getnamingo/registry.git /opt/registry "
-            f"&& cd /opt/registry && git checkout a783a3c37a5614827f7141f07028e9a6a2d4f5cb"
+            "curl --connect-timeout 30 -fsSL https://codeload.github.com/getnamingo/registry/tar.gz/"
+            "a783a3c37a5614827f7141f07028e9a6a2d4f5cb -o /tmp/registry.tar.gz "
+            "&& echo 'f38b03276ef4e446ab1d4b8d5267b2f6008ca3be06f9193e6d6e2f81c6191a1e  /tmp/registry.tar.gz' "
+            "| sha256sum -c - && mkdir -p /opt/registry "
+            "&& tar -xzf /tmp/registry.tar.gz -C /opt/registry --strip-components=1 "
+            "&& rm /tmp/registry.tar.gz"
         )
         for component in ("cp", "epp", "das", "automation"):
             node.addBuildCommand(composer_install(f'/opt/registry/{component}'))

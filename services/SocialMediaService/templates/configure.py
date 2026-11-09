@@ -8,7 +8,7 @@ settings = json.loads(Path('/opt/mastodon-service/settings.json').read_text())
 state = Path('/var/lib/mastodon')
 state.mkdir(parents=True, exist_ok=True)
 saved = state / 'settings.json'
-previous = json.loads(saved.read_text()) if saved.exists() else settings
+previous = json.loads(saved.read_text()) if saved.exists() else dict(settings)
 # ACME URL was transport configuration, not instance identity.
 previous.pop('acme_url', None)
 identity = {k: v for k, v in settings.items() if k != 'acme_url'}

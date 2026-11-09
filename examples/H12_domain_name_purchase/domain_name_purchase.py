@@ -9,18 +9,19 @@ SERVICES = HERE.parents[1] / 'services'
 SEED_EMULATOR = HERE.parents[2] / 'seed-emulator'
 sys.path.insert(0, str(SEED_EMULATOR))
 sys.path.insert(0, str(SERVICES))
+sys.path.insert(0, str(HERE.parents[1]))
 
 from DomainService import NamingoRegistryService, FossBillingRegistrarService, DnsService, FakePaymentService
 from DomainService import DnsServiceMerger, DomainDataService
 from seedemu.core import Binding, Filter, Emulator, Action
 from seedemu.compiler import Docker, Platform
-from examples.internet.B02_mini_internet_with_dns.mini_internet_with_dns import build_emulator as build_b02
+from examples.H00_mini_internet import build_emulator as build_mini_internet
 
 def build_emulator():
     """Build the complete domain purchase environment."""
 
-    emu = build_b02()
-    # Use the native merge API to install the DNS subclass, retaining B02 zones, nodes and bindings.
+    emu = build_mini_internet()
+    # Use the native merge API to install the DNS subclass, retaining H00 zones, nodes and bindings.
     dns_extension = Emulator()
     dns_extension.addLayer(DnsService())
     emu = emu.merge(dns_extension, [DnsServiceMerger()])

@@ -17,6 +17,9 @@ if ! grep -q '^VAPID_PRIVATE_KEY=' /var/lib/mastodon/runtime.env; then
     rm /var/lib/mastodon/vapid.tmp
 fi
 runuser -u mastodon -- /opt/mastodon-service/run.sh bundle exec rails runner /opt/mastodon-service/initialize.rb
+if [ "$(cat /opt/mastodon-service/token-exports.json)" != '[]' ]; then
+    runuser -u mastodon -- /opt/mastodon-service/run.sh bundle exec rails runner /opt/mastodon-service/export-tokens.rb
+fi
 
 domain=$(python3 -c 'import json; print(json.load(open("/opt/mastodon-service/settings.json"))["domain"])')
 acme_url=$(python3 -c 'import json; print(json.load(open("/opt/mastodon-service/settings.json")).get("acme_url") or "")')

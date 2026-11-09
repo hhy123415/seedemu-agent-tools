@@ -15,6 +15,7 @@ class SocialMediaServer(Server):
         self._port = 443
         self._forwarded_port = None
         self._accounts = []
+        self._token_exports = []
         self._acme_url = None
         self.appendClassName('SocialMediaService')
         self.setDisplayName('Mastodon')
@@ -64,6 +65,25 @@ class SocialMediaServer(Server):
         self._accounts.append({'username': username, 'password': password, 'email': email, 'admin': admin})
         return self
 
+    def exportToken(self, username, *, scopes, path):
+        """Export an account's API token at startup to a private Mastodon data file."""
+        if not any(account['username'] == username for account in self._accounts):
+            raise ValueError('Configure the account with addAccount() first')
+        if (not isinstance(scopes, (list, tuple)) or not scopes
+                or any(not isinstance(scope, str) or not re.fullmatch(r'[a-z]+(?::[a-z_]+)?', scope)
+                       for scope in scopes)):
+            raise ValueError('Expected a non-empty list of OAuth scopes')
+        destination = Path(path)
+        if destination.parent != Path('/var/lib/mastodon') or destination.suffix != '.json':
+            raise ValueError('Token file must be a JSON file directly in /var/lib/mastodon')
+        if destination.name == 'accounts.json':
+            raise ValueError('Token file must not overwrite account credentials')
+        if any(item['path'] == str(destination) for item in self._token_exports):
+            raise ValueError('Token export path already configured')
+        self._token_exports.append({'username': username, 'scopes': list(dict.fromkeys(scopes)),
+                                    'path': str(destination)})
+        return self
+
     def install(self, node):
         if self._forwarded_port is not None and self._forwarded_port != self._port:
             raise ValueError('Forwarded and canonical HTTPS ports must match; call setPort()')
@@ -77,6 +97,7 @@ class SocialMediaServer(Server):
             'port': self._port, 'acme_url': self._acme_url,
         }) + '\n')
         node.setFile('/opt/mastodon-service/accounts.json', json.dumps(self._accounts) + '\n')
+        node.setFile('/opt/mastodon-service/token-exports.json', json.dumps(self._token_exports) + '\n')
         packages = ('ca-certificates curl git build-essential pkg-config '
                          'libssl-dev libyaml-dev libreadline-dev zlib1g-dev libgmp-dev '
                          'libgdbm-dev libffi-dev libicu-dev libidn-dev libpq-dev '

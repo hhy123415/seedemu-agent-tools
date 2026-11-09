@@ -158,13 +158,13 @@ def main() -> int:
     from seedemu.testing import ComposeRuntimeTest
 
     test = ComposeRuntimeTest(__file__)
-    registrar = test.require_service(150, "host_1")
-    registry = test.require_service(151, "host_1")
+    registrar = test.require_service(150, "host_0")
+    registry = test.require_service(151, "host_0")
     payment = test.require_service(160, "host_0")
     primary = test.require_service(170, "host_0")
     secondary = test.require_service(170, "host_1")
-    resolver = test.require_service(153, "local-dns-2")
-    com_dns = test.require_service(151, "host_0", "COM parent DNS is generated")
+    resolver = test.require_service(150, "dns_resolver")
+    com_dns = test.require_service(151, "dns_com", "COM parent DNS is generated")
 
     if registrar:
         test.exec_check(

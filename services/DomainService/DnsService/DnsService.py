@@ -21,9 +21,33 @@ DnsFileTemplates = {
 }
 
 
+def install_from_mirror(node):
+    """Move automatic package installation after the source rewrite."""
+    packages = ' '.join(shlex.quote(package) for package in sorted(node.getSoftware()))
+    # Docker normally installs addSoftware() packages before service commands.
+    # Handle both legacy sources.list and Ubuntu 24.04's deb822 sources.
+    rewrite = (
+        'for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.list '
+        '/etc/apt/sources.list.d/*.sources; do '
+        '[ -f "$file" ] || continue; '
+        "sed -Ei 's|https?://([a-z]{2}\\.)?archive.ubuntu.com/ubuntu/?|https://mirrors.ustc.edu.cn/ubuntu/|g; "
+        "s|https?://security.ubuntu.com/ubuntu/?|https://mirrors.ustc.edu.cn/ubuntu/|g; "
+        "s|https?://ports.ubuntu.com/ubuntu-ports/?|https://mirrors.ustc.edu.cn/ubuntu-ports/|g' "
+        '"$file"; done'
+    )
+    options = '-o Acquire::Retries=0 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
+    command = 'sh -ec ' + shlex.quote(rewrite)
+    if packages:
+        command += (' && apt-get ' + options + 'update && '
+                    'DEBIAN_FRONTEND=noninteractive apt-get ' + options +
+                    'install -y --no-install-recommends ' + packages)
+    node.getBuildCommands().insert(0, command)
+    node.getSoftware().clear()
+
+
 def apt_install(packages):
     """Update indexes and install packages in one Docker layer."""
-    options = '-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
+    options = '-o Acquire::Retries=0 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 '
     return ('apt-get ' + options + 'update && '
             'DEBIAN_FRONTEND=noninteractive apt-get ' + options + 'install -y '
             + ' '.join(shlex.quote(package) for package in packages.split()))
@@ -130,6 +154,7 @@ class DnsServer(DomainNameServer):
             node.setFile('/opt/dns-hosting/' + name, content)
         node.addBuildCommandAtEnd('php8.5 /opt/dns-hosting/patch-bind-api-soa-types.php')
         node.insertStartCommand(0, 'bash /opt/dns-hosting/start-bind-api-nameserver.sh ' + role)
+        install_from_mirror(node)
 
 
 class DnsUpdateAuthorization:

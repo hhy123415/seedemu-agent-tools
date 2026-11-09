@@ -1,5 +1,10 @@
 # H15: Social media agent using Tool Service
 
+> Historical example: the standalone `tool-service` has been removed. This
+> generator and its commands are no longer runnable from the current checkout.
+> The migrated [socialmedia package](../../services/AgentService/tools/socialmedia/)
+> supports AgentService. E15 now uses Tinode and does not install this package. The remainder documents the old design.
+
 H15 reuses H14's Mastodon, DNS, Alice and Bob topology and adds two containers:
 
 | Component | Address | Role |
