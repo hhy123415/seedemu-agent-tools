@@ -77,6 +77,51 @@ async function write(body, success) {
 function option(select, value, label, disabled = false) {
   const o = document.createElement('option'); o.value = value ?? ''; o.textContent = label; o.disabled = disabled; select.appendChild(o);
 }
+function showActions(isItem, actions = {}) {
+  $('item-interactions').hidden = !isItem;
+  const container = $('action-fields');
+  container.replaceChildren();
+  if (!isItem) return;
+  for (const [key, spec] of Object.entries(world.action_types)) {
+    const group = document.createElement('div');
+    group.dataset.action = key;
+    const label = document.createElement('label');
+    label.className = 'check';
+    const enable = document.createElement('input');
+    enable.type = 'checkbox';
+    enable.checked = Object.hasOwn(actions, key);
+    label.append(enable, spec.label);
+    const fields = document.createElement('div');
+    for (const [field, title] of Object.entries(spec.fields)) {
+      const caption = document.createElement('label');
+      const input = document.createElement('textarea');
+      input.dataset.field = field;
+      input.rows = 2;
+      input.maxLength = 2000;
+      input.required = true;
+      input.value = actions[key]?.[field] ?? '';
+      caption.append(title, input);
+      fields.appendChild(caption);
+    }
+    const update = () => {
+      fields.hidden = !enable.checked;
+      fields.querySelectorAll('textarea').forEach(input => { input.disabled = !enable.checked; });
+    };
+    enable.onchange = update;
+    update();
+    group.append(label, fields);
+    container.appendChild(group);
+  }
+}
+function collectActions() {
+  const actions = {};
+  for (const group of $('action-fields').children) {
+    if (!group.querySelector('input').checked) continue;
+    actions[group.dataset.action] = Object.fromEntries(
+      Array.from(group.querySelectorAll('textarea'), input => [input.dataset.field, input.value]));
+  }
+  return actions;
+}
 function fillRoom(id, newKind = null) {
   selected = id; const room = byId(id);
   const kind = room?.kind || newKind || 'area';
@@ -94,6 +139,7 @@ function fillRoom(id, newKind = null) {
   }
   const parent = room ? room.parent : level;
   if (!item || byId(parent)?.kind === 'room') $('room-parent').value = parent ?? '';
+  showActions(item, room?.actions);
   $('portable-label').hidden = !item; $('item-portable').checked = room?.portable ?? true;
   $('room-entry').replaceChildren(); option($('room-entry'), null, '暂不设置入口');
   if (room) for (const node of world.nodes) {
@@ -256,6 +302,7 @@ $('exit-form').addEventListener('input',()=>{formDirty=true;});
 $('room-form').onsubmit=event=>{
   event.preventDefault();
   write({op:$('room-kind').value==='item' ? (selected===null?'create_item':'update_item') : (selected===null?'create_room':'update_room'),id:selected,name:$('room-name').value,
+    ...($('room-kind').value === 'item' ? {actions: collectActions()} : {}),
     portable:$('item-portable').checked,description:$('room-description').value,parent:num($('room-parent').value),kind:$('room-kind').value,
     entry:$('room-kind').value==='area'?num($('room-entry').value):null},payload=>{
       const room=byId(payload.result);level=room.parent;fillRoom(room.id);
@@ -332,7 +379,7 @@ $('import-file').onchange = async () => {
     importPreviewValid=true;
     $('import-spawn-label').hidden=true;$('import-replace-label').hidden=true;
     $('import-effect').textContent='以新地点追加到世界顶层，保留现有地图和角色。重复导入会创建副本。';
-    $('import-summary').textContent=`${file.name}：${result.places} 个地点（${result.areas} 个区域），${result.exits} 个有向出口。顶层：${result.roots.join('、')}`;
+    $('import-summary').textContent=`${file.name}：${result.places} 个地点（${result.areas} 个区域），${result.exits} 个有向出口，${result.items} 件地面物品。顶层：${result.roots.join('、')}`;
     $('import-dialog').showModal();
   } catch(error) { message('导入校验失败：'+error.message,true); }
   finally { setBusy(false); }

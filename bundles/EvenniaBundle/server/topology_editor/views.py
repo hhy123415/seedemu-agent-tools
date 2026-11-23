@@ -19,6 +19,8 @@ from evennia.objects.models import ObjectDB
 from evennia.utils.ansi import strip_ansi
 from evennia.utils.create import create_object
 
+from item_interactions.actions import ACTIONS, configured_actions, set_actions, validate_actions
+
 from .schema import InvalidEdit
 
 ROOT = Path(__file__).parent
@@ -38,6 +40,17 @@ def item_objects(rooms):
                 'evennia.objects.objects.DefaultRoom',
                 'evennia.objects.objects.DefaultExit',
                 'evennia.objects.objects.DefaultCharacter')) and not obj.has_account}
+
+
+def keyed_floor_items(rooms):
+    """Give every placed item a distinct export key, including copies from append."""
+    result = {}
+    for obj in sorted(item_objects(rooms).values(), key=lambda item: item.id):
+        key = obj.attributes.get('map_item_key', category=CATEGORY) or f'item-{obj.id}'
+        while key in result:
+            key = f'{key}-{obj.id}'
+        result[key] = obj
+    return result
 
 
 def item_for(value, rooms):
@@ -113,15 +126,18 @@ def snapshot():
                                                 db_destination_id__in=rooms).order_by('id')
              if obj.is_typeclass('evennia.objects.objects.DefaultExit', exact=False)]
     items = []
-    for obj in item_objects(rooms).values():
+    for key, obj in keyed_floor_items(rooms).items():
         point = obj.attributes.get('position', category=CATEGORY)
-        items.append({'id': obj.id, 'name': str(obj.key), 'label': strip_ansi(str(obj.key)),
+        items.append({'id': obj.id, 'map_key': key, 'name': str(obj.key), 'label': strip_ansi(str(obj.key)),
                       'description': str(obj.db.desc or ''), 'kind': 'item',
                       'parent': obj.db_location_id, 'position': list(point) if point is not None else None,
+                      'actions': configured_actions(obj),
                       'portable': obj.locks.get('get') == 'get:all()', 'protected': False})
     payload = {'nodes': nodes, 'edges': edges, 'items': items}
     payload['revision'] = hashlib.sha256(json.dumps(payload, sort_keys=True,
                                                    ensure_ascii=False).encode()).hexdigest()
+    payload['action_types'] = {key: {'label': label, 'fields': fields}
+                               for key, (label, fields, _) in ACTIONS.items()}
     return payload
 
 
@@ -207,6 +223,22 @@ def check_exit_name(name, source, exclude=None):
             raise InvalidEdit('这个地点已经有同名出口或别名，请使用其他名称。')
 
 
+def save_item(obj, room, name, description, portable, actions):
+    if obj is None:
+        obj = create_object(settings.BASE_OBJECT_TYPECLASS, key=name, location=room, home=room)
+    else:
+        obj.key = name
+        if obj.location != room:
+            obj.location = room
+            obj.home = room
+            obj.attributes.remove('position', category=CATEGORY)
+    obj.db.desc = description
+    obj.locks.add('get:all()' if portable else 'get:false()')
+    if actions is not None:
+        set_actions(obj, actions)
+    return obj
+
+
 def mutate(body):
     if body.get('op') == 'import_map':
         from .transfer import import_map
@@ -223,17 +255,12 @@ def mutate(body):
         portable = body.get('portable', True)
         if type(portable) is not bool:
             raise InvalidEdit('可拾取选项必须为布尔值。')
-        if obj is None:
-            obj = create_object(settings.BASE_OBJECT_TYPECLASS, key=name, location=room, home=room)
-        else:
-            obj.key = name
-            if obj.location != room:
-                obj.location = room
-                obj.home = room
-                obj.attributes.remove('position', category=CATEGORY)
-        obj.db.desc = description
-        obj.locks.add('get:all()' if portable else 'get:false()')
-        return obj.id
+        if 'actions' in body:
+            try:
+                validate_actions(body['actions'])
+            except ValueError as error:
+                raise InvalidEdit(str(error)) from error
+        return save_item(obj, room, name, description, portable, body.get('actions')).id
     if op == 'delete_item':
         obj = item_for(body.get('id'), rooms)
         if obj.contents:

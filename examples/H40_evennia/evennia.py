@@ -85,7 +85,7 @@ def main():
     emu.render()
     bundle.addInternalNetwork(str(ASN), 'net0', [WORLD_ADDRESS], GATEWAY)
     bundle.getContainer('server').updateServiceConfig({'dns': [DNS_RESOLVER]})
-    compiler = Docker(platform=Platform.AMD64)
+    compiler = Docker(platform=Platform.AMD64, internetMapEnabled=False)
     bundle.registerVolumes(compiler)
     compiler.addContainerBundle(bundle)
     internet_map = InternetMap(emu)

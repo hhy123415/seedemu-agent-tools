@@ -2,3 +2,7 @@
 
 .node.item rect { fill: #3b3048; stroke: #c6a0e5; stroke-dasharray: 5 3; }
 .item-dot { display:inline-block; width:9px; height:9px; border-radius:2px; background:#c6a0e5; }
+
+#item-interactions { margin: 0 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 7px; }
+#item-interactions legend { padding: 0 5px; }
+#action-fields .check { margin: 6px 0; }

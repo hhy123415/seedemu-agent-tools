@@ -4,8 +4,23 @@ import shutil
 import sys
 
 game = Path(sys.argv[1])
-shutil.copytree(Path(__file__).parent / 'topology_editor', game / 'topology_editor',
-                dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__'))
+for package in ('topology_editor', 'item_interactions'):
+    shutil.copytree(Path(__file__).parent / package, game / package,
+                    dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__'))
+
+# Existing characters persist the dotted path to CharacterCmdSet. Extend that class
+# in place so both existing and newly created characters get the command.
+cmdsets = game / 'commands/default_cmdsets.py'
+marker = '# EmuVista item interaction command'
+if marker not in cmdsets.read_text():
+    with cmdsets.open('a') as stream:
+        stream.write(f'\n\n{marker}\n'
+                     'from item_interactions.commands import CmdInteract\n\n'
+                     '_GameCharacterCmdSet = CharacterCmdSet\n\n'
+                     'class CharacterCmdSet(_GameCharacterCmdSet):\n'
+                     '    def at_cmdset_creation(self):\n'
+                     '        super().at_cmdset_creation()\n'
+                     '        self.add(CmdInteract())\n')
 urls = game / 'web/urls.py'
 marker = '# EmuVista hierarchical topology editor'
 content = urls.read_text()

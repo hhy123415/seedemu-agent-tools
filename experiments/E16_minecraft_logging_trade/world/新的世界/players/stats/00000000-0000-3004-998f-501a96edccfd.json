@@ -1,0 +1,34 @@
+{
+  "stats": {
+    "minecraft:picked_up": {
+      "minecraft:oak_sign": 2,
+      "minecraft:stick": 2,
+      "minecraft:spruce_door": 2,
+      "minecraft:oak_sapling": 1
+    },
+    "minecraft:custom": {
+      "minecraft:sprint_one_cm": 59689,
+      "minecraft:open_chest": 1,
+      "minecraft:time_since_rest": 32478,
+      "minecraft:fall_one_cm": 438,
+      "minecraft:walk_one_cm": 162551,
+      "minecraft:total_world_time": 48423,
+      "minecraft:leave_game": 7,
+      "minecraft:fly_one_cm": 23151,
+      "minecraft:play_time": 32478,
+      "minecraft:jump": 164,
+      "minecraft:time_since_death": 32478
+    },
+    "minecraft:used": {
+      "minecraft:stone": 18,
+      "minecraft:repeating_command_block": 2,
+      "minecraft:bone_meal": 74,
+      "minecraft:oak_sign": 9,
+      "minecraft:chest": 7,
+      "minecraft:oak_sapling": 41,
+      "minecraft:white_bed": 5,
+      "minecraft:campfire": 5
+    }
+  },
+  "DataVersion": 4786
+}

@@ -6,8 +6,11 @@ from evennia.objects.models import ObjectDB
 from evennia.typeclasses.attributes import Attribute
 from evennia.utils.create import create_object
 
-from .views import CATEGORY, InvalidEdit, protected_ids, room_objects, snapshot
+from item_interactions.fixtures import validate_items
 
+from .views import CATEGORY, InvalidEdit, keyed_floor_items, protected_ids, room_objects, snapshot
+
+from .scene_items import place_item, seed_items
 from .schema import FORMAT, validate_map, summary
 
 
@@ -23,6 +26,12 @@ def export_map():
         'connections': [{'source': key(e['source']),
                          'target': key(e['area_target'] or e['target']), 'name': e['name']}
                         for e in state['edges']],
+        'items': {
+            item['map_key']: {'room': key(item['parent']), 'name': item['name'],
+                              'description': item['description'], 'portable': item['portable'],
+                              'actions': item['actions']}
+            for item in state['items']
+        },
     }
 
 
@@ -51,8 +60,17 @@ def replacement_plan(document, spawn):
             'occupants': occupants, 'homes': homes, 'destinations': destinations}
 
 
+def validated_scene(source):
+    document = validate_map(source)
+    try:
+        document['items'] = validate_items(source.get('items', {}), document)
+    except ValueError as error:
+        raise InvalidEdit(str(error)) from error
+    return document
+
+
 def preview_map(document, mode='append', spawn=None):
-    document = validate_map(document)
+    document = validated_scene(document)
     if mode not in ('append', 'replace'):
         raise InvalidEdit('导入模式必须是追加或替换。')
     result = {**summary(document), 'mode': mode}
@@ -64,11 +82,12 @@ def preview_map(document, mode='append', spawn=None):
     return result
 
 
-def import_map(document, mode='append', spawn=None):
-    document = validate_map(document)
+def import_map(document, mode='append', spawn=None, *, items=None):
+    document = validated_scene(document)
     if mode not in ('append', 'replace'):
         raise InvalidEdit('导入模式必须是追加或替换。')
     plan = replacement_plan(document, spawn) if mode == 'replace' else None
+    previous_items = keyed_floor_items(plan['rooms']) if plan and document['items'] else {}
     nodes, created = {}, []
     # 保存对象引用和编号；异常回滚后同步 Evennia 的进程缓存。
     touched = {}
@@ -123,6 +142,13 @@ def import_map(document, mode='append', spawn=None):
                 created.append(obj)
                 if area:
                     obj.attributes.add('area_target', nodes[target['key']], category=CATEGORY)
+            for key, spec in document['items'].items():
+                existing = previous_items.get(key)
+                obj = place_item(key, spec, nodes[spec['room']], existing)
+                if existing is None:
+                    created.append(obj)
+            if items:
+                seed_items(document, items, nodes)
     except Exception:
         for obj in created:
             obj.flush_from_cache(force=True)

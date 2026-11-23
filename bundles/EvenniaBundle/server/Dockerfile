@@ -3,6 +3,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev i
 RUN pip install --no-cache-dir evennia==5.0.1
 COPY map-import.json /opt/evennia/map-import.json
 COPY start.sh /opt/evennia/start.sh
+COPY item_interactions /opt/evennia/item_interactions
 COPY topology_editor /opt/evennia/topology_editor
 COPY install_editor.py /opt/evennia/install_editor.py
 WORKDIR /data

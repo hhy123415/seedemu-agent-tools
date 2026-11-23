@@ -91,6 +91,7 @@ def summary(document):
     return {'places': len(document['nodes']),
             'areas': sum(n['kind'] == 'area' for n in document['nodes']),
             'exits': len(document['connections']),
+            'items': len(document.get('items', {})),
             'roots': [n['name'] for n in document['nodes'] if n['parent'] is None]}
 
 

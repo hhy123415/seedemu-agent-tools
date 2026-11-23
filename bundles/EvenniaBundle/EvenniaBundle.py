@@ -8,6 +8,7 @@ from seedemu.containerBundle import ContainerBundle
 from seedemu.containerBundle.ContainerBundle import PreparedContainer
 from seedemu.core.Volume import BaseVolume
 
+from .server.item_interactions.fixtures import validate_items
 from .server.topology_editor.schema import validate_map
 
 SERVER_SOURCE = Path(__file__).parent / 'server'
@@ -55,17 +56,20 @@ class EvenniaBundle(ContainerBundle):
                                  EVENNIA_SUPERUSER_EMAIL=str(email))
         return self
 
-    def importMap(self, path, mode='append', spawn=None):
+    def importMap(self, path, mode='append', spawn=None, items=None):
         """Import this map once per world/configuration when the server starts.
 
         append keeps existing rooms; replace reuses the default room for spawn
         (a physical room key in the JSON) and relocates existing occupants there.
         Changing the map or mode creates a new import on the next deployment.
+        The map may include items keyed by a stable identifier. The items argument
+        remains available for older maps that keep their items in a separate file.
         """
         path = Path(path)
         if path.stat().st_size > 1024 * 1024:
             raise ValueError('map file must not exceed 1 MiB')
-        document = validate_map(json.loads(path.read_text(encoding='utf-8-sig')))
+        source = json.loads(path.read_text(encoding='utf-8-sig'))
+        document = validate_map(source)
         if mode not in ('append', 'replace'):
             raise ValueError('map mode must be append or replace')
         if mode == 'replace' and spawn not in {
@@ -73,8 +77,14 @@ class EvenniaBundle(ContainerBundle):
             raise ValueError('replace requires spawn to name a physical room key in the map')
         if mode == 'append' and spawn is not None:
             raise ValueError('spawn is only supported in replace mode')
-        self.getContainer('server').map_import = {
-            'document': document, 'mode': mode, 'spawn': spawn}
+        config = {'document': document, 'mode': mode, 'spawn': spawn}
+        if items is not None:
+            if 'items' in source:
+                raise ValueError('provide items in the map or via the items argument, not both')
+            source['items'] = json.loads(Path(items).read_text(encoding='utf-8-sig'))
+        if 'items' in source:
+            config['items'] = validate_items(source['items'], document)
+        self.getContainer('server').map_import = config
         return self
 
     def enableHostAccess(self, web_port=4001, websocket_port=4002, telnet_port=4000):

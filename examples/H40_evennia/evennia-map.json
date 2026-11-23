@@ -270,5 +270,47 @@
       "target": "room-42",
       "name": "去街道"
     }
-  ]
+  ],
+  "items": {
+    "h40.street-map": {
+      "room": "room-42", "name": "公交站牌", "portable": false,
+      "description": "站牌下夹着一张手绘路线图，红线从街道一直画进学校。",
+      "actions": {"read": {"text": "从街道输入「去学校」到校门口，再输入「前往广场」。广场西侧是图书馆，东侧是操场。"}}
+    },
+    "h40.gate-board": {
+      "room": "room-2", "name": "校园公告栏", "portable": false,
+      "description": "软木板上钉着一张盖有蓝色图书馆印章的海报。",
+      "actions": {"read": {"text": "校园开放日｜在阅览室翻开《校园植物手册》，再去操场为班级接力赛记圈。"}}
+    },
+    "h40.projector": {
+      "room": "room-11", "name": "投影仪", "portable": false,
+      "description": "一台吊装在天花板上的投影仪，讲台边有电源按键。",
+      "actions": {"toggle": {"on": "风扇转起来，幕布上投出本周学生作品展的海报。", "off": "幕布暗了下来，风扇声渐渐停息。"}}
+    },
+    "h40.menu": {
+      "room": "room-8", "name": "食堂菜单", "portable": false,
+      "description": "取餐窗口旁的小黑板上写着今日供应。",
+      "actions": {"read": {"text": "一号窗口：番茄鸡蛋面。二号窗口：香菇青菜包。自带餐盒可到三号窗口取餐。"}}
+    },
+    "h40.lap-counter": {
+      "room": "room-7", "name": "记圈器", "portable": true,
+      "description": "一枚带金属指环的手持计数器，拇指正好抵住按钮。",
+      "actions": {"read": {"text": "接力赛计圈方法：跑者每次经过起点线，按一次计数键。"}, "count": {"text": "咔哒，记下了一圈。"}}
+    },
+    "h40.desk-bell": {
+      "room": "room-14", "name": "服务铃", "portable": false,
+      "description": "借还书台上放着一只黄铜铃，底座刻着按铃次数。",
+      "actions": {"count": {"text": "叮！铃声传进了书库。"}}
+    },
+    "h40.reading-lamp": {
+      "room": "room-15", "name": "阅读灯", "portable": false,
+      "description": "靠窗的书桌上固定着一盏老式绿罩灯，拉绳垂在手边。",
+      "actions": {"toggle": {"on": "灯罩下亮起一圈暖光，照亮了桌面的书页。", "off": "拉绳轻响，绿罩灯熄灭了。"}}
+    },
+    "h40.field-guide": {
+      "room": "room-15", "name": "校园植物手册", "portable": true,
+      "description": "这本口袋书用一片压平的银杏叶作书签。",
+      "actions": {"read": {"text": "书签夹在第十二页：银杏叶呈扇形，叶脉向外分叉。校园广场旁的老树就是一株银杏。"}}
+    }
+  }
 }

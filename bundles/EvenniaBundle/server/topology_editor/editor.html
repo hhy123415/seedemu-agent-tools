@@ -32,6 +32,10 @@
         <label>所属地点<select id="room-parent"></select></label>
         <label>描述<textarea id="room-description" rows="3" maxlength="20000" placeholder="描述这个地点"></textarea></label>
         <label id="portable-label" class="check" hidden><input id="item-portable" type="checkbox" checked>允许角色拾取（取消表示固定物品）</label>
+        <fieldset id="item-interactions" hidden><legend>物品交互</legend>
+          <div id="action-fields"></div>
+          <small>玩家输入「交互 物品名」可查看动作，输入「动作名 物品名」即可执行。</small>
+        </fieldset>
         <label id="entry-label">进入区域时到达<select id="room-entry"></select><small>先创建内部地点，再回来设置入口。</small></label>
         <div class="actions"><button type="submit" class="primary" id="save-room">保存地点</button><button type="button" id="enter">进入内部 →</button></div>
         <button type="button" id="delete-room" class="danger">删除地点</button>
