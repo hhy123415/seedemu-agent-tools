@@ -7,6 +7,7 @@ import argparse
 from pathlib import Path
 
 from seedemu.compiler import Docker, Platform
+from seedemu.containerBundle import InternetMap
 from seedemu.core import Binding, Emulator, Filter
 from seedemu.layers import Base, Ebgp, Ibgp, Ospf, PeerRelationship, Routing
 from seedemu.services import DomainNameCachingService, DomainNameService
@@ -159,20 +160,20 @@ def _configure_company_network(emu):
 
     company.getNetwork('net0').setDisplayName('Company Edge LAN')
     edge = company.getRouter('router0').setDisplayName('Company Edge Router')
-    company.createNetwork('edge_link', prefix=f'{prefix}.2.0/30')
+    company.createNetwork('edge_link', prefix=f'{prefix}.2.0/29')
     company.createNetwork('backbone', prefix=f'{prefix}.1.0/24').setDisplayName('Headquarters Backbone')
-    company.createNetwork('branch_link', prefix=f'{prefix}.3.0/30').setDisplayName('Branch Routed Link')
-    edge.joinNetwork('edge_link', address=f'{prefix}.2.1')
+    company.createNetwork('branch_link', prefix=f'{prefix}.3.0/29').setDisplayName('Branch Routed Link')
+    edge.joinNetwork('edge_link', address=f'{prefix}.2.2')
     core = company.createRouter('core').setDisplayName('Company Core Router')
-    core.joinNetwork('edge_link', address=f'{prefix}.2.2')
-    core.joinNetwork('backbone', address=f'{prefix}.1.1')
-    core.joinNetwork('branch_link', address=f'{prefix}.3.1')
+    core.joinNetwork('edge_link', address=f'{prefix}.2.3')
+    core.joinNetwork('backbone', address=f'{prefix}.1.254')
+    core.joinNetwork('branch_link', address=f'{prefix}.3.2')
 
     for name, subnet, display, hosts in COMPANY_LANS:
         company.createNetwork(name, prefix=f'{prefix}.{subnet}.0/24').setDisplayName(display)
         router = company.createRouter(name + '_router').setDisplayName(display + ' Router')
         if name == 'branch':
-            router.joinNetwork('branch_link', address=f'{prefix}.3.2')
+            router.joinNetwork('branch_link', address=f'{prefix}.3.3')
         else:
             router.joinNetwork('backbone', address=f'{prefix}.1.{subnet}')
         router.joinNetwork(name, address=f'{prefix}.{subnet}.254')
@@ -241,8 +242,11 @@ def main():
     emu = build_emulator(args.hosts_per_as)
     emu.render()
     platform = Platform.AMD64 if args.platform == 'amd' else Platform.ARM64
-    emu.compile(Docker(platform=platform, internetMapEnabled=True),
-                str(args.output.resolve()), override=True)
+    compiler = Docker(platform=platform)
+    internet_map = InternetMap(emu)
+    internet_map.setPorts([8083, 8080, 8084])
+    compiler.addContainerBundle(internet_map)
+    emu.compile(compiler, str(args.output.resolve()), override=True)
 
 
 if __name__ == '__main__':
