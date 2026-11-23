@@ -1,5 +1,0 @@
-output/
-runtime/
-__pycache__/
-agent/__pycache__/
-.env

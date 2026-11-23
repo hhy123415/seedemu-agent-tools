@@ -7,8 +7,6 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 SERVICES = HERE.parents[1] / 'services'
-SEED_EMULATOR = HERE.parents[2] / 'seed-emulator'
-sys.path.insert(0, str(SEED_EMULATOR))
 sys.path.insert(0, str(SERVICES))
 sys.path.insert(0, str(HERE.parents[1]))
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add one Minecraft Java server to SEED's B02 mini Internet with DNS."""
+"""Add one Minecraft Java server to the shared H00 mini Internet with DNS."""
 
 import argparse
 from pathlib import Path
@@ -7,44 +7,26 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-sys.path[:0] = [str(ROOT.parent / 'seed-emulator'), str(ROOT)]
+sys.path.insert(0, str(ROOT))
 
 from seedemu.compiler import Docker, Platform
 from seedemu.containerBundle import InternetMap
-from seedemu.layers import PeerRelationship
 from bundles.MinecraftBundle import MinecraftBundle
-# Use SEED's B02 directly: its InternetMap setup uses the current ContainerBundle
-# API, while H00's entrypoint still passes the unsupported internetMapEnabled
-# argument to Docker. B02 also provides the DNS infrastructure needed here.
-from examples.internet.B02_mini_internet_with_dns.mini_internet_with_dns import build_emulator
+from examples.H00_mini_internet import build_emulator
 
 
 def build_world():
     """Create H23 networking and DNS before rendering, allowing extra services."""
     emu = build_emulator()
     emu.getLayer('DomainNameService').getZone('com.').addRecord('minecraft A 10.170.0.10')
-    # B02 has no Internet egress. Minecraft downloads its server at first start,
-    # so advertise external routes through one real-world router.
-    outside = emu.getLayer('Base').createAutonomousSystem(99999)
-    outside.createRealWorldRouter(
-        'internet-egress', prefixes=['0.0.0.0/1', '128.0.0.0/1']
-    ).joinNetwork('ix100', '10.100.0.99')
-    emu.getLayer('Ebgp').addPrivatePeerings(100, [3], [99999], PeerRelationship.Provider)
     return emu
 
 
 def create_minecraft(emu, *, host_port=25565, volume='minecraft-example-data'):
     """Use the same server configuration in H23 and derived experiments."""
-    return MinecraftBundle(
-        # Keep Docker's DNS for public download domains; B02 serves simulated DNS.
-        emu, image='itzg/minecraft-server:java25',
-        host_port=host_port, volume=volume,
-        environment={
-            'EULA': 'TRUE', 'TYPE': 'VANILLA', 'VERSION': '26.1',
-            'MEMORY': '2G', 'ONLINE_MODE': 'FALSE', 'SERVER_PORT': '25565',
-            'ENABLE_RCON': 'true', 'MOTD': 'EmuVista Minecraft',
-        },
-    )
+    return (MinecraftBundle(emu)
+            .enableHostAccess(host_port)
+            .setDataVolume(volume))
 
 
 def main():

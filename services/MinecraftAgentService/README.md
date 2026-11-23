@@ -1,51 +1,41 @@
 # MinecraftAgentService
 
-`MinecraftAgentService` 继承公共 `AgentService`，在 SEED 主机上安装 Minecraft agent。
-公共 `services/AgentService` 保持与 `seed-labs/emuvista` 的 `main` 一致，
-本次同步基准为 `2825b79eb03494264a181a679d13520f89adf21a`。
+基于 E17 提取的 Mindcraft 容器服务。新版不继承项目的 AgentService，也不包含旧 LangChain 扩展、HTTP 工具桥接或自建 Mineflayer runtime；agent 循环和游戏行为由 Mindcraft 执行。
+
+这是独立 Compose 服务生成接口，不是旧版 SEED `Service.install(vnode)` 接口。E17 保持普通 Docker 网络。
 
 ```python
-from services.AgentService import ToolPackage
 from services.MinecraftAgentService import MinecraftAgentService
 
-agents = MinecraftAgentService(
-    tools=[social_tools, payment_tools],
-    supervisor=HERE / 'start.py',
-    notifications=HERE / 'notifications.py',  # 可选
-)
-agent = agents.install('alice').setPersona(person)
-agent.setTools(['minecraft.observe', 'minecraft.chat'])
-# 像 AgentService 一样绑定 agent 和 agents.clock，然后 emu.addLayer(agents)。
+agents = (MinecraftAgentService('.env', minecraft_host='minecraft', minecraft_version='1.21.6')
+          .setRegionPath('map/regions')
+          .addAgent('Alice', persona_file='persona.alice.json', ui_port=18090)
+          .addAgent('Bob', persona_file='persona.bob.json', ui_port=18091))
+compose = agents.prepare('output', context_name='alice', minecraft_service='minecraft')
 ```
 
-子类自动注册 `MinecraftBundle` 提供的工具，将本地 bridge 地址设为
-`http://127.0.0.1:8765`。调用者通过 `setTools()` 控制各 agent 的授权工具。
-人物、交易规则、世界配置、环境文件挂载和持久卷仍由实验定义。
+返回 `services` 和 `volumes` 字典，调用方合并 MinecraftBundle 的服务后写入 Compose YAML。连接外部 Minecraft 服务器时省略 `minecraft_service`，不生成本地健康依赖。
 
-安装时，子类为 agent 选择 `BaseSystem.SEEDEMU_BASE`，由 Docker 编译器映射到
-`handsonsecurity/seedemu-base:2.0`。父类安装 Python、虚拟环境、框架与工具依赖，
-子类安装官方 Node.js 22.23.5 和随包提供的 npm，验证固定 SHA-256 后执行 bridge 的
-`npm ci --omit=dev`。当前支持 AMD64 和 LangChain；Node.js 版本及校验值在
-`MinecraftAgentService.py` 中一起维护。
+每个角色单独拥有容器、记忆卷和人设文件，共享构建上下文。默认 Compose 服务名为角色名小写，容器和数据卷为 `mindcraft-<服务名>`；可通过 `addAgent` 参数覆盖。界面端口可选且仅绑定宿主机回环地址。角色名支持 1–16 位字母、数字和下划线。名字、服务名、容器、数据卷、界面端口必须独立。
 
-`supervisor` 是必需的 Python 启动脚本，安装到 `/opt/minecraft-agent/start.py`。
-它负责读取实验环境、降权运行 bridge、等待连接、启动 `agentctl run` 并管理子进程。
-启动时提供与配置身份一致的 `MC_AGENT_NAME`、`PYTHONPATH=/opt/emuvista-agent`，
-日志位于 `/var/log/minecraft-agent-supervisor.log`。E16 的实现仍位于实验的 `start.py`。
-若传入父类的 `environment_file`，文件仍挂载到 `/run/emuvista-agent.env`；
-自定义 supervisor 必须自行加载所需环境，因为父类的启动命令已被替换。
+## Runtime
 
-`notifications` 是可选的 Python 模块，需提供 `make_middleware(context)`。
-它安装到 `/opt/emuvista-agent/minecraft_notifications.py`，在每次模型调用前运行。
-未提供时不添加通知状态和中间件，但仍安装 bridge、Minecraft 工具和启动脚本。
+`runtime/Dockerfile` 固定 Mindcraft 提交 `e1c1fc3ffa481506c2445fc639e16dba504b5920`，沿用 Node 22 构建环境。
 
-原来放在公共 AgentService 中的 Minecraft 定制只作用于生成的节点文件：
+- `configure.mjs`：生成原生 profile/settings，默认禁用 embedding，使用中文交流。
+- `patch_mindcraft.py`：禁用嵌入调用并使用关键词检索。
+- `autonomy.mjs` / `patch_autonomy.py`：基于原生 SelfPrompter 的任务启动、暂停、恢复、停止和完成状态；状态随每个角色的数据卷持久化。
+- `region_queries.mjs` / `patch_region_queries.py`：通过 `!listRegions` 和 `!getRegion` 读取最新地图标注。
+- `start.sh`：配置后启动 Mindcraft `main.js`，提供 UI 转发。
 
-- 框架默认休息时间允许低至 2 秒；普通 AgentService 仍为上游的 30 秒下限。
-- 工具参数错误包含字段路径、类型和范围，便于 agent 修正调用。
-- 工具返回非空 `error` 或 `status='failed'` 时，完成事件标记为错误，并保留错误摘要。
+`.env` 通过 Compose 在运行时注入，不复制进镜像。支持 `OPENAI_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、`MINDCRAFT_ALLOW_CODING`。同组其他角色自动加入公开聊天忽略名单，沿用 E17 防止机器人相互触发聊天循环的行为。
 
-这些扩展通过检查唯一匹配的源码位置应用；上游结构变化时明确报错，要求检查适配。
-共享时钟保持父类安装方式，不安装 bridge，也不替换启动命令。
-子类沿用 `AgentService` 层名称，同一个 emulator 中使用其中一个服务实例。
-E99 继续直接使用公共 `AgentService`。Compose 构建依赖处理不属于该子类。
+人设 JSON 与 map 由实验维护，只读挂载到 agent。人设不包含固定任务，例如：
+
+```json
+{"persona":"A resident who values privacy and a regular daily routine.","auto_start":true,"resume_on_restart":true,"cooldown_ms":5000,"decision_interval_ms":60000}
+```
+
+更新代码后需重新生成 Compose 并重建 agent 镜像；更新地图后查询可直接读到新数据。任务操作使用 `!startTask`、`!taskStatus`、`!pauseTask`、`!resumeTask`、`!stopTask`；完成由 Mindcraft 调用 `!endGoal`。
+
+模型观察后使用 `!chooseGoal` 记录自行生成的目标和理由。`!endGoal` 完成人设目标后延迟重新决策，`!waitForSituation` 允许等待；暂停和停止仍需明确恢复。旧固定任务不会自动恢复。修改人设后重新创建 agent 容器以刷新 profile。

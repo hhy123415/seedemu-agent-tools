@@ -1,0 +1,15 @@
+name: SemanticRegions
+version: 1.0.0
+main: local.semantic.SemanticRegionsPlugin
+api-version: '1.21.6'
+depend: [WorldEdit, WorldGuard]
+description: Export named WorldEdit selections as persistent semantic region JSON.
+commands:
+  semantic:
+    description: Save and maintain semantic regions from WorldEdit selections.
+    usage: /semantic help
+    permission: semantic.admin
+permissions:
+  semantic.admin:
+    description: Manage and export semantic region definitions.
+    default: op

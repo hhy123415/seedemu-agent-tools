@@ -10,7 +10,7 @@ def balance(arguments, context):
     config, headers = connection(context)
     data = request({**config, 'url': config['accountingURL']},
                    '/accounts/' + config['account'], headers=headers)['data']
-    return {'balanceMinor': data['attributes']['balance'], 'currency': 'USD'}
+    return {'balanceMinor': data['attributes']['balance'], 'currency': config.get('currency', 'USD')}
 
 
 def transfer(arguments, context):

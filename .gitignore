@@ -222,6 +222,7 @@ output/
 .agentseed*
 
 /social_platforms.md
+/物理世界调研.md
 /tool-service/tool_authoring.md
 
 .runtime/

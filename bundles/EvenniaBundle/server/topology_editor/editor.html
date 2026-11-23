@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>世界地图 · Evennia</title>
+  <link rel="stylesheet" href="editor.css">
+  <script src="editor.js" defer></script>
+</head>
+<body>
+<header><div><div class="eyebrow">EVENNIA / WORLD BUILDER</div><h1>世界地图</h1></div><nav><a href="/webclient/" target="_blank" rel="noopener">进入游戏 ↗</a><a href="/admin/">管理后台</a></nav></header>
+<div class="toolbar"><nav id="breadcrumbs" aria-label="地点层级"></nav><div class="actions"><button id="up">↑ 上一层</button><button id="refresh">刷新</button><button id="export-map">导出地图</button><button id="import-map">导入地图</button><input id="import-file" type="file" accept=".json,application/json" hidden><button id="new-item">＋ 新建物品</button><button id="new-room" class="primary">＋ 新建地点</button></div></div>
+<div id="message" role="status" aria-live="polite">正在读取世界…</div>
+<main>
+  <section class="map-panel" aria-label="当前层地图">
+    <div class="map-head"><div><h2 id="level-title">世界</h2><span id="counts"></span></div><div class="actions"><button id="fit">居中</button><button id="save-layout">保存布局</button></div></div>
+    <div class="canvas">
+      <svg id="graph" aria-label="地点与通行出口的拓扑图"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#69a8ac"/></marker></defs><g id="viewport"><g id="edges"></g><g id="nodes"></g></g></svg>
+      <div id="empty" hidden><strong>这里还没有内部地点或物品</strong><p>可以新建内部地点；进入可站立地点后还可以添加物品。</p><button id="empty-create" class="primary">＋ 新建地点</button></div>
+      <div class="legend"><span class="area-dot"></span>区域 <span class="room-dot"></span>可站立地点 <span class="item-dot"></span>物品 <span>→ 通行出口</span></div>
+    </div>
+    <div class="map-foot">单击查看 · 双击或“进入内部”展开 · 拖动节点排布 · 拖动画布平移 · 滚轮缩放</div>
+    <div id="room-list" aria-label="当前层地点列表"></div>
+  </section>
+  <aside>
+    <section class="inspector">
+      <div class="eyebrow">地点 / 物品属性</div><h2 id="selection-title">选择或新建地点</h2>
+      <p id="selection-hint">区域可以包含多层地点，并指定角色进入时出现的入口。</p>
+      <form id="room-form">
+        <label>名称<input id="room-name" maxlength="255" required placeholder="例如：学校、校门口、教学楼"></label>
+        <label>类型<select id="room-kind"><option value="area">区域（角色不能停留）</option><option value="room">可站立地点</option><option value="item">物品</option></select></label>
+        <label>所属地点<select id="room-parent"></select></label>
+        <label>描述<textarea id="room-description" rows="3" maxlength="20000" placeholder="描述这个地点"></textarea></label>
+        <label id="portable-label" class="check" hidden><input id="item-portable" type="checkbox" checked>允许角色拾取（取消表示固定物品）</label>
+        <label id="entry-label">进入区域时到达<select id="room-entry"></select><small>先创建内部地点，再回来设置入口。</small></label>
+        <div class="actions"><button type="submit" class="primary" id="save-room">保存地点</button><button type="button" id="enter">进入内部 →</button></div>
+        <button type="button" id="delete-room" class="danger">删除地点</button>
+      </form>
+    </section>
+    <section class="inspector exits">
+      <div class="eyebrow">通行关系</div><h2>出口</h2>
+      <p>归属不会自动创建通路。通向区域的出口会把角色送到其入口。</p>
+      <div id="exit-list"></div>
+      <button id="new-exit">＋ 新建出口</button>
+      <form id="exit-form" hidden>
+        <label>出口名称<input id="exit-name" required maxlength="255" placeholder="例如：进入学校"></label>
+        <label>从（可站立地点）<select id="exit-source" required></select></label>
+        <label>到（地点或区域入口）<select id="exit-target" required></select></label>
+        <label class="check"><input id="exit-both" type="checkbox">同时创建返回出口</label>
+        <label id="reverse-label" hidden>返回出口名称<input id="exit-reverse" maxlength="255" placeholder="例如：离开学校"></label>
+        <div class="actions"><button type="submit" class="primary">保存出口</button><button type="button" id="cancel-exit">取消</button></div>
+      </form>
+    </section>
+  </aside>
+</main>
+<dialog id="confirm-dialog"><h2>删除确认</h2><p id="confirm-message"></p><div class="actions"><button id="confirm-cancel">取消</button><button id="confirm-delete" class="danger">确认删除</button></div></dialog>
+<dialog id="import-dialog"><h2>导入地图</h2><p id="import-summary"></p><label>导入方式<select id="import-mode"><option value="append">追加：保留原地图</option><option value="replace">替换：使用新地图</option></select></label>
+<label id="import-spawn-label" hidden>角色安置与默认出生地点<select id="import-spawn"></select></label>
+<p id="import-effect">以新地点追加到世界顶层，保留现有地图和角色。重复导入会创建副本。</p>
+<label id="import-replace-label" class="check" hidden><input id="import-replace-check" type="checkbox">确认替换整个地图，并将角色和物品安置到所选地点</label><div class="actions"><button id="import-cancel">取消</button><button id="import-confirm" class="primary">确认追加导入</button></div></dialog>
+</body></html>

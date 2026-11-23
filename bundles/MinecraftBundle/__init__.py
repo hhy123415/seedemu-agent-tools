@@ -1,3 +1,3 @@
-from .MinecraftBundle import MinecraftBundle
+from .MinecraftBundle import MinecraftBundle, MINECRAFT_VERSION
 
-__all__ = ['MinecraftBundle']
+__all__ = ['MinecraftBundle', 'MINECRAFT_VERSION']

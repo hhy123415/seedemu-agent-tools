@@ -1,0 +1,23 @@
+{
+  "patches": [
+    {
+      "file": "/data/spigot.yml",
+      "ops": [
+        {
+          "$put": {
+            "path": "$.commands",
+            "key": "enable-spam-exclusions",
+            "value": true
+          }
+        },
+        {
+          "$put": {
+            "path": "$.commands",
+            "key": "spam-exclusions",
+            "value": [""]
+          }
+        }
+      ]
+    }
+  ]
+}

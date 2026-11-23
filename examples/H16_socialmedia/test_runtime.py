@@ -7,7 +7,6 @@ import sys
 
 
 def main() -> int:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'seed-emulator'))
     from seedemu.testing import ComposeRuntimeTest
 
     test = ComposeRuntimeTest(__file__)

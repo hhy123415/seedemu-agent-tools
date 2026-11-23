@@ -6,7 +6,6 @@ import sys
 from shutil import copytree
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[2] / 'seed-emulator'))
 sys.path.insert(0, str(HERE.parents[1] / 'services'))
 sys.path.insert(0, str(HERE.parents[1]))
 

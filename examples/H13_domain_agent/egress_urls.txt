@@ -1,3 +1,0 @@
-api.deepseek.com
-10.13.94.198
-generativelanguage.googleapis.com

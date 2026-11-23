@@ -1,0 +1,274 @@
+{
+  "format": "emuvista.evennia.map",
+  "version": 1,
+  "nodes": [
+    {
+      "key": "room-2",
+      "name": "校门口",
+      "kind": "room",
+      "description": "你站在学校大门内侧。公告栏上贴着校园导览，前方道路通向校园广场。这里是学校的入口和初始落点。",
+      "parent": "room-3",
+      "entry": null
+    },
+    {
+      "key": "room-3",
+      "name": "学校",
+      "kind": "area",
+      "description": "一座由教学楼、图书馆、操场和食堂组成的校园。进入学校会到达校门口。",
+      "parent": "room-41",
+      "entry": "room-2"
+    },
+    {
+      "key": "room-4",
+      "name": "校园广场",
+      "kind": "room",
+      "description": "宽阔的广场中央立着校园指示牌。教学楼在北侧，图书馆在西侧，操场在东侧，食堂位于东南侧。",
+      "parent": "room-3",
+      "entry": null
+    },
+    {
+      "key": "room-5",
+      "name": "教学楼",
+      "kind": "area",
+      "description": "校园的主要教学区域，包含门厅、三间教室和教师办公室。进入教学楼会到达一楼门厅。",
+      "parent": "room-3",
+      "entry": "room-9"
+    },
+    {
+      "key": "room-6",
+      "name": "图书馆",
+      "kind": "area",
+      "description": "安静的图书馆，包含服务大厅、阅览室和书库。进入图书馆会到达服务大厅。",
+      "parent": "room-3",
+      "entry": "room-14"
+    },
+    {
+      "key": "room-7",
+      "name": "操场",
+      "kind": "room",
+      "description": "红色跑道环绕着中央草坪，旁边有篮球场和看台。西侧通道通往校园广场。",
+      "parent": "room-3",
+      "entry": null
+    },
+    {
+      "key": "room-8",
+      "name": "食堂",
+      "kind": "room",
+      "description": "食堂里整齐摆放着餐桌，窗口上方挂着菜单。门外道路连接校园广场和操场。",
+      "parent": "room-3",
+      "entry": null
+    },
+    {
+      "key": "room-9",
+      "name": "教学楼门厅",
+      "kind": "room",
+      "description": "教学楼一楼门厅，墙上挂着课程安排。走廊连接各教室和教师办公室，南门通往校园广场。",
+      "parent": "room-5",
+      "entry": null
+    },
+    {
+      "key": "room-10",
+      "name": "101教室",
+      "kind": "room",
+      "description": "明亮的教室里摆着课桌，前方有黑板和讲台，窗外可以望见校园。门外是教学楼门厅。",
+      "parent": "room-5",
+      "entry": null
+    },
+    {
+      "key": "room-11",
+      "name": "102教室",
+      "kind": "room",
+      "description": "这间教室配有投影幕和成排课桌，后方展示着学生作品。门外是教学楼门厅。",
+      "parent": "room-5",
+      "entry": null
+    },
+    {
+      "key": "room-12",
+      "name": "103教室",
+      "kind": "room",
+      "description": "一间用于小组讨论的教室，桌椅围成几个小组，墙边设有白板。门外是教学楼门厅。",
+      "parent": "room-5",
+      "entry": null
+    },
+    {
+      "key": "room-13",
+      "name": "教师办公室",
+      "kind": "room",
+      "description": "办公室内有办公桌、文件柜和一张会谈桌。门口贴着教师值班安排。",
+      "parent": "room-5",
+      "entry": null
+    },
+    {
+      "key": "room-14",
+      "name": "图书馆大厅",
+      "kind": "room",
+      "description": "大厅内设有借还书服务台和馆藏检索终端，两侧分别通往阅览室和书库。出口通往校园广场。",
+      "parent": "room-6",
+      "entry": null
+    },
+    {
+      "key": "room-15",
+      "name": "阅览室",
+      "kind": "room",
+      "description": "安静的阅览室摆放着长桌和阅读灯，靠窗的位置能看到校园绿地。",
+      "parent": "room-6",
+      "entry": null
+    },
+    {
+      "key": "room-16",
+      "name": "书库",
+      "kind": "room",
+      "description": "成排书架按类别排列，架端贴着分类编号。中间留有可以通行的过道。",
+      "parent": "room-6",
+      "entry": null
+    },
+    {
+      "key": "room-41",
+      "name": "城市",
+      "kind": "area",
+      "description": "这个城市中有一个学校",
+      "parent": null,
+      "entry": "room-42"
+    },
+    {
+      "key": "room-42",
+      "name": "街道",
+      "kind": "room",
+      "description": "这是城市的一条道路",
+      "parent": "room-41",
+      "entry": null
+    }
+  ],
+  "connections": [
+    {
+      "source": "room-2",
+      "target": "room-4",
+      "name": "前往广场"
+    },
+    {
+      "source": "room-4",
+      "target": "room-2",
+      "name": "返回校门口"
+    },
+    {
+      "source": "room-4",
+      "target": "room-5",
+      "name": "进入教学楼"
+    },
+    {
+      "source": "room-9",
+      "target": "room-4",
+      "name": "走出教学楼"
+    },
+    {
+      "source": "room-4",
+      "target": "room-6",
+      "name": "进入图书馆"
+    },
+    {
+      "source": "room-14",
+      "target": "room-4",
+      "name": "走出图书馆"
+    },
+    {
+      "source": "room-4",
+      "target": "room-7",
+      "name": "前往操场"
+    },
+    {
+      "source": "room-7",
+      "target": "room-4",
+      "name": "返回广场"
+    },
+    {
+      "source": "room-4",
+      "target": "room-8",
+      "name": "前往食堂"
+    },
+    {
+      "source": "room-8",
+      "target": "room-4",
+      "name": "返回广场"
+    },
+    {
+      "source": "room-7",
+      "target": "room-8",
+      "name": "前往食堂"
+    },
+    {
+      "source": "room-8",
+      "target": "room-7",
+      "name": "前往操场"
+    },
+    {
+      "source": "room-9",
+      "target": "room-10",
+      "name": "进入101教室"
+    },
+    {
+      "source": "room-10",
+      "target": "room-9",
+      "name": "返回门厅"
+    },
+    {
+      "source": "room-9",
+      "target": "room-11",
+      "name": "进入102教室"
+    },
+    {
+      "source": "room-11",
+      "target": "room-9",
+      "name": "返回门厅"
+    },
+    {
+      "source": "room-9",
+      "target": "room-12",
+      "name": "进入103教室"
+    },
+    {
+      "source": "room-12",
+      "target": "room-9",
+      "name": "返回门厅"
+    },
+    {
+      "source": "room-9",
+      "target": "room-13",
+      "name": "进入教师办公室"
+    },
+    {
+      "source": "room-13",
+      "target": "room-9",
+      "name": "返回门厅"
+    },
+    {
+      "source": "room-14",
+      "target": "room-15",
+      "name": "进入阅览室"
+    },
+    {
+      "source": "room-15",
+      "target": "room-14",
+      "name": "返回大厅"
+    },
+    {
+      "source": "room-14",
+      "target": "room-16",
+      "name": "进入书库"
+    },
+    {
+      "source": "room-16",
+      "target": "room-14",
+      "name": "返回大厅"
+    },
+    {
+      "source": "room-42",
+      "target": "room-2",
+      "name": "去学校"
+    },
+    {
+      "source": "room-2",
+      "target": "room-42",
+      "name": "去街道"
+    }
+  ]
+}

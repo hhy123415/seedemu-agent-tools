@@ -2,7 +2,7 @@
   {
     "name": "payment.balance",
     "handler": "handlers:balance",
-    "description": "Read your own wallet balance in USD cents.",
+    "description": "Read your own wallet balance in minor currency units (100 = 1 currency unit).",
     "input_schema": {
       "type": "object",
       "properties": {},
@@ -12,7 +12,7 @@
   {
     "name": "payment.transfer",
     "handler": "handlers:transfer",
-    "description": "Pay a world-directory recipient from your own wallet. Generate a UUID and reuse it for retries; amounts are USD cents.",
+    "description": "Pay a world-directory recipient from your own wallet. Generate a UUID and reuse it for retries; amounts are minor currency units (100 = 1 currency unit).",
     "input_schema": {
       "type": "object",
       "properties": {

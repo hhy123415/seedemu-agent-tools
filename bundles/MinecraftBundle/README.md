@@ -1,59 +1,48 @@
 # MinecraftBundle
 
-Runs an `itzg/minecraft-server` image on a native SEED network. The experiment
-supplies the image, Minecraft environment, resolver, host port and world volume.
-The Bundle owns the startup wrapper, routing, healthcheck and volume registration.
-It has no dependency on E16 Minecraft 伐木交易实验.
+公共 Minecraft 服务端：Paper 1.21.6 build 48 / Java 21，内置 WorldEdit 7.3.16、WorldGuard 7.0.14 和 SemanticRegions。构建源码统一放在 `server/`，插件由 Maven 构建进镜像。Bundle 不包含 agent、寻路或模型调用。
+
+## 独立 Compose
 
 ```python
 from bundles.MinecraftBundle import MinecraftBundle
 
-minecraft = MinecraftBundle(
-    emu, image='itzg/minecraft-server:java25',
-    environment={'EULA': 'TRUE', 'TYPE': 'VANILLA', 'VERSION': '26.1',
-                 'MEMORY': '4G', 'ONLINE_MODE': 'FALSE'},
-    resolver='10.150.0.54', host_port=25565, volume='minecraft-data',
-)
-emu.render()
+minecraft = (MinecraftBundle()
+             .setWorld('world')
+             .setRegionPath('map/regions')
+             .setDataVolume('minecraft-data')
+             .setOperators(['seed'])
+             .enableHostAccess(25565))
+compose = {
+    'services': {'minecraft': minecraft.prepare('output', container_name='minecraft-server')},
+    'volumes': minecraft.getVolumes(),
+}
+```
+
+调用方将 `compose` 写入 `output/docker-compose.yml`。不设置显式镜像名，遵循 Compose 的 `<项目>-<服务>` 命名。E17 是此入口的完整示例。
+
+## SEED 网络
+
+与 PaymentBundle 一样使用 `ContainerBundle` / `PreparedContainer` 生命周期和链式配置。在 emulator render 后关联网络，交给 Docker 编译器：
+
+```python
+minecraft = MinecraftBundle(emu).setDataVolume('minecraft-data').enableHostAccess(25565)
 minecraft.addInternalNetwork('170', 'net0', ['10.170.0.10'], '10.170.0.254')
 minecraft.registerVolumes(compiler)
 compiler.addContainerBundle(minecraft)
-emu.compile(compiler, 'output', override=True)
 ```
 
-The topology must already contain AS170 and its router. Register networks after
-rendering, as required by the native ContainerBundle API. `host_port=None`
-disables host port forwarding. `volume` is an explicit Docker volume name;
-choose distinct names for independent worlds. The caller owns EULA acceptance
-and server version selection. The image must provide `/start` and its native
-Minecraft healthcheck.
+H23 提供完整示例。网络包装层委托原服务端入口运行，仅在配置默认路由时添加 `NET_ADMIN` 能力。独立 Compose 不需要该能力。
 
-## Agent 工具
+## 配置与持久化
 
-`MinecraftBundle.getAgentTools()` 返回 `ToolPackage` 所需的 name/source，
-源码位于 `tools/`；`getAgentBridge()` 返回 `bridge/` 路径，供 agent 镜像安装
-持久 Mineflayer bridge（运行 `npm ci --omit=dev` 后启动 `server.js`）。
-Python handler 通过 `tool_config.minecraft.local.bridge_url` 访问 bridge。
-`tools/tools.json` 是完整工具目录，包含 32 个工具的描述、参数和 handler，覆盖观察、聊天、寻路、战斗、制作、容器、烧炼、挖掘、读取游戏时间及睡眠等。
-具体 agent 的工具权限由调用方的 `setTools([...])` 显式选择，不通过删减公共 manifest 限制。
-Bundle 服务端本身不会自动安装或启动 agent bridge；E16 Minecraft 伐木交易实验 的 `experiment.py` 负责集成。
+- `setWorld(path)`：接受直接含 `level.dat` 的目录，或恰好含一个存档子目录的目录。首次复制到数据卷 `imported_world`，后续启动保留已有进度。省略则正常生成新世界。
+- `setRegionPath(path)`：将语义 JSON 目录可写挂载到 SemanticRegions。插件约每两秒同步 WorldGuard，定义区域内禁止放置和拆除方块，其余交互保持默认行为。省略则元数据保存在服务端数据目录。
+- `setDataVolume(name)` / `setSavePath(path)`：选择命名卷或宿主机数据目录。命名卷在独立 Compose 中使用 `getVolumes()`，SEED 中调用 `registerVolumes(compiler)`。
+- `setOperators(names)`：按大小写敏感的离线用户名计算 UUID，合并到 OP 列表。默认不指定管理员。
+- `configureApplication(environment)`：覆盖内存、MOTD、难度等设置；版本、离线模式、内部端口、存档导入由 Bundle 管理。
+- `enableHostAccess(port)`：开放宿主机所有接口上的端口；未调用则不映射端口。
 
-### 入口与寻路
+默认 `EULA=TRUE`、离线模式、生存模式、easy 难度、2G Java 内存、内部端口 25565。启用服务表示接受 Minecraft EULA。世界数据独立于构建目录，删除命名卷会删除存档。
 
-`observe.navigation_landmarks` 独立返回 32 格内的床、告示牌、门、栅栏门、楼梯，
-每类最多 8 个，不占用普通方块的 64 个名额；这是客户端已加载数据，不保证可达。
-`find_blocks` 支持 `door`、`gate`、`stairs` 类别，并返回开关、朝向等方块属性。
-`open_door` 自动靠近木门/栅栏门再交互，不自动穿门；已经打开时不重复切换，
-铁门返回需要红石控制。新开门需收到服务器方块更新并确认 `open=true`；
-无法确认时返回失败，应先观察再重试。移动失败会附带位置和附近关键方块。
-E16 Minecraft 伐木交易实验 提示 agent 优先经过入口和楼梯，等待正在执行的动作，失败后更换中间目标。
-保留 pathfinder 默认设置（允许挖掘，不启用实验性的自动开门），因此寻路仍可能改变地形。
-以上能力需重新生成、构建后生效；单元测试不代表实际地图通行已验证。
-
-### 冷启动网络就绪
-
-E16 Minecraft 伐木交易实验 设置 `MinecraftBundle(startup_probe_url=...)`，在启动 `/start` 前通过 HTTPS
-检查 Mojang 版本清单是否可访问。失败每 5 秒重试，整个等待最多 180 秒；
-超时明确报错退出，不无限重启。普通 `depends_on: service_started` 不能证明 BGP 已收敛。
-该检查使用容器实际 DNS/出口，只证明探测地址可达，不保证后续所有下载成功。
-不配置 `startup_probe_url` 的其他示例保持原启动行为。
+SemanticRegions 命令及地图查询的使用示例见 E17 README；agent 对地图的只读挂载由实验自行配置。

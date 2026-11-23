@@ -11,7 +11,6 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-sys.path.insert(0, str(ROOT.parent / 'seed-emulator'))
 sys.path.insert(0, str(ROOT / 'services'))
 sys.path.insert(0, str(ROOT))
 
@@ -138,7 +137,7 @@ def add_model_egress(emu, base_url):
         raise ValueError('invalid LLM hostname')
 
     def forward():
-        resolver = emu.getBindingFor('dns-resolver')
+        resolver = emu.getBindingFor('dns_resolver')
         resolver.appendFile('/etc/bind/named.conf.local',
                             f'\nzone "{host}" {{ type forward; forward only; forwarders {{ 1.1.1.1; 8.8.8.8; }}; }};\n')
     return forward
